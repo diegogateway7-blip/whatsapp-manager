@@ -401,26 +401,107 @@ function analyzeErrorCode(error) {
 
 async function checkWhatsAppNumber(token, phoneNumberId) {
   try {
+    // Buscar informações completas do número
     const response = await axios.get(
       `https://graph.facebook.com/${CONFIG.META_API_VERSION}/${phoneNumberId}`,
       {
         headers: {
           'Authorization': `Bearer ${token}`
         },
+        params: {
+          fields: 'id,display_phone_number,verified_name,quality_rating,account_review_status,messaging_limit_tier'
+        },
         timeout: 15000
       }
     );
 
     const numberData = response.data;
+    
+    // Extrair informações importantes
     const qualityRating = numberData.quality_rating || 'UNKNOWN';
+    const accountReviewStatus = numberData.account_review_status || 'UNKNOWN';
+    const messagingLimitTier = numberData.messaging_limit_tier || 'UNKNOWN';
+    const verifiedName = numberData.verified_name || null;
 
+    // ===== VERIFICAÇÃO DE STATUS DA CONTA =====
+    // Contas REJECTED ou RESTRICTED não podem enviar mensagens
+    if (accountReviewStatus === 'REJECTED' || accountReviewStatus === 'RESTRICTED') {
+      return {
+        active: false,
+        error: `Conta ${accountReviewStatus === 'REJECTED' ? 'REJEITADA' : 'RESTRITA'} pelo WhatsApp Business. Não pode enviar mensagens.`,
+        errorCode: 'ACCOUNT_' + accountReviewStatus,
+        analysis: {
+          isBanned: true,
+          isTemporary: false,
+          shouldRemove: false, // Não remove automático, pode ser temporário
+          severity: 'high'
+        },
+        qualityRating,
+        accountReviewStatus,
+        messagingLimitTier
+      };
+    }
+
+    // ===== VERIFICAÇÃO DE QUALITY RATING =====
+    // Quality Rating RED indica problemas graves
+    if (qualityRating === 'RED') {
+      return {
+        active: false,
+        error: 'Quality Rating: RED - Qualidade muito baixa. Risco de bloqueio iminente.',
+        errorCode: 'QUALITY_RED',
+        analysis: {
+          isBanned: false,
+          isTemporary: true, // Pode melhorar
+          shouldRemove: false,
+          severity: 'high'
+        },
+        qualityRating,
+        accountReviewStatus,
+        messagingLimitTier
+      };
+    }
+
+    // ===== VERIFICAÇÃO DE MESSAGING LIMIT =====
+    // Se não tem tier configurado, pode ter problemas
+    if (messagingLimitTier === 'NOT_SET' || messagingLimitTier === 'UNKNOWN') {
+      return {
+        active: false,
+        error: 'Messaging Limit Tier não configurado. Número pode não conseguir enviar mensagens.',
+        errorCode: 'TIER_NOT_SET',
+        analysis: {
+          isBanned: false,
+          isTemporary: true,
+          shouldRemove: false,
+          severity: 'medium'
+        },
+        qualityRating,
+        accountReviewStatus,
+        messagingLimitTier
+      };
+    }
+
+    // ===== AVISO SE CONTA EM ANÁLISE =====
+    if (accountReviewStatus === 'PENDING') {
+      console.log(`    ⚠️  Conta em análise (PENDING) - Funcionalidade pode estar limitada`);
+    }
+
+    // ===== AVISO SE QUALITY RATING AMARELO =====
+    if (qualityRating === 'YELLOW') {
+      console.log(`    ⚠️  Quality Rating: YELLOW - Atenção necessária`);
+    }
+
+    // Tudo OK - número pode enviar mensagens
     return { 
       active: true, 
       error: null,
       errorCode: null,
       analysis: null,
-      qualityRating
+      qualityRating,
+      accountReviewStatus,
+      messagingLimitTier,
+      verifiedName
     };
+    
   } catch (error) {
     const analysis = analyzeErrorCode(error);
     let errorMessage = 'Erro desconhecido';
@@ -496,9 +577,12 @@ async function performHealthCheck() {
           numberData.errorCode = null;
           numberData.failedChecks = 0;
           numberData.qualityRating = result.qualityRating;
+          numberData.accountReviewStatus = result.accountReviewStatus;
+          numberData.messagingLimitTier = result.messagingLimitTier;
+          numberData.verifiedName = result.verifiedName;
           results.active++;
 
-          console.log(`  ✅ ${number} - Ativo ${result.qualityRating ? `(${result.qualityRating})` : ''}`);
+          console.log(`  ✅ ${number} - Ativo | Quality: ${result.qualityRating} | Status: ${result.accountReviewStatus} | Tier: ${result.messagingLimitTier}`);
         } else {
           // Número com erro
           numberData.error = result.error;
