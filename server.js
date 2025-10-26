@@ -112,69 +112,6 @@ app.patch('/api/apps/:appId/numbers/:number', (req, res) => {
   res.json({ success: true, number: database.apps[appId].numbers[number] });
 });
 
-// ===== HEALTH CHECK =====
-
-async function checkWhatsAppNumber(token, phoneNumberId) {
-  try {
-    const response = await axios.get(
-      `https://graph.facebook.com/v21.0/${phoneNumberId}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        timeout: 10000
-      }
-    );
-
-    return { active: true, error: null };
-  } catch (error) {
-    let errorMessage = 'Erro desconhecido';
-    
-    if (error.response) {
-      errorMessage = error.response.data?.error?.message || `HTTP ${error.response.status}`;
-    } else if (error.code === 'ECONNABORTED') {
-      errorMessage = 'Timeout na requisição';
-    } else {
-      errorMessage = error.message;
-    }
-
-    return { active: false, error: errorMessage };
-  }
-}
-
-async function performHealthCheck() {
-  console.log('🔍 Iniciando Health Check...');
-  
-  for (const appId in database.apps) {
-    const app = database.apps[appId];
-    console.log(`Verificando ${app.appName}...`);
-
-    const result = await checkWhatsAppNumber(app.token, app.phoneNumberId);
-    
-    // Atualizar status de todos os números deste app
-    for (const number in app.numbers) {
-      app.numbers[number].active = result.active;
-      app.numbers[number].lastCheck = new Date().toISOString();
-      app.numbers[number].error = result.error;
-    }
-  }
-
-  database.lastHealthCheck = new Date().toISOString();
-  console.log('✅ Health Check completo!');
-}
-
-// Executar health check manual
-app.post('/api/health-check', async (req, res) => {
-  try {
-    console.log('🔍 Health check manual iniciado...');
-    await performHealthCheck();
-    res.json({ success: true, lastCheck: database.lastHealthCheck });
-  } catch (error) {
-    console.error('❌ Erro no health check:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
 // ===== ROTAS PARA TYPEBOT =====
 
 // Obter número ativo aleatório
@@ -235,6 +172,67 @@ app.get('/api/status', (req, res) => {
   });
 });
 
+// ===== HEALTH CHECK =====
+
+async function checkWhatsAppNumber(token, phoneNumberId) {
+  try {
+    const response = await axios.get(
+      `https://graph.facebook.com/v21.0/${phoneNumberId}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        timeout: 10000
+      }
+    );
+
+    return { active: true, error: null };
+  } catch (error) {
+    let errorMessage = 'Erro desconhecido';
+    
+    if (error.response) {
+      errorMessage = error.response.data?.error?.message || `HTTP ${error.response.status}`;
+    } else if (error.code === 'ECONNABORTED') {
+      errorMessage = 'Timeout na requisição';
+    } else {
+      errorMessage = error.message;
+    }
+
+    return { active: false, error: errorMessage };
+  }
+}
+
+async function performHealthCheck() {
+  console.log('🔍 Iniciando Health Check...');
+  
+  for (const appId in database.apps) {
+    const app = database.apps[appId];
+    console.log(`Verificando ${app.appName}...`);
+
+    const result = await checkWhatsAppNumber(app.token, app.phoneNumberId);
+    
+    // Atualizar status de todos os números deste app
+    for (const number in app.numbers) {
+      app.numbers[number].active = result.active;
+      app.numbers[number].lastCheck = new Date().toISOString();
+      app.numbers[number].error = result.error;
+    }
+  }
+
+  database.lastHealthCheck = new Date().toISOString();
+  console.log('✅ Health Check completo!');
+}
+
+// Executar health check manual
+app.post('/api/health-check', async (req, res) => {
+  try {
+    await performHealthCheck();
+    res.json({ success: true, lastCheck: database.lastHealthCheck });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ===== CRON JOB =====
 
 // Executar a cada 30 minutos
@@ -250,9 +248,8 @@ app.listen(PORT, () => {
   console.log(`📊 Dashboard: http://localhost:${PORT}`);
   console.log(`🔗 API: http://localhost:${PORT}/api`);
   
-  // Health check inicial (apenas se houver apps)
+  // Health check inicial
   if (Object.keys(database.apps).length > 0) {
-    console.log('🔍 Executando health check inicial...');
     performHealthCheck();
   }
 });
