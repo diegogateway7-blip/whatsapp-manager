@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: whatsapp-manager
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: WEBHOOK_URL
+        sync: false
+        # Configure this in Render dashboard with your webhook URL for notifications
+    # Persistent disk for database and logs
+    disk:
+      name: data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
+

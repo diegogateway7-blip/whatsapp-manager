@@ -1,13 +1,21 @@
 {
   "name": "whatsapp-manager",
-  "version": "1.0.0",
-  "description": "Sistema de gerenciamento de números WhatsApp com health check automático",
+  "version": "2.0.0",
+  "description": "Sistema inteligente de gerenciamento de números WhatsApp Business com health check automático, quarentena e remoção automática de números banidos",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"
   },
-  "keywords": ["whatsapp", "manager", "health-check", "typebot"],
+  "keywords": [
+    "whatsapp",
+    "whatsapp-business",
+    "manager",
+    "health-check",
+    "typebot",
+    "automation",
+    "meta-api"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
@@ -20,6 +28,6 @@
     "nodemon": "^3.0.1"
   },
   "engines": {
-    "node": ">=14.0.0"
+    "node": ">=18.0.0"
   }
 }
