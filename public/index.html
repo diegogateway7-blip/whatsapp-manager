@@ -596,4 +596,32 @@
                 await fetch(`${API_URL}/api/health-check`, { method: 'POST' });
                 setTimeout(() => {
                     loadData();
-                    
+                    alert('✅ Health check completo!');
+                }, 2000);
+            } catch (error) {
+                alert('❌ Erro ao executar health check');
+            }
+        }
+
+        // Carregar status
+        async function loadStatus() {
+            try {
+                const response = await fetch(`${API_URL}/api/status`);
+                const data = await response.json();
+                
+                if (data.lastHealthCheck) {
+                    const date = new Date(data.lastHealthCheck);
+                    document.getElementById('lastCheck').textContent = date.toLocaleString('pt-BR');
+                }
+            } catch (error) {
+                console.error('Erro ao carregar status:', error);
+            }
+        }
+
+        // Inicializar
+        loadData();
+        loadStatus();
+        setInterval(loadStatus, 30000);
+    </script>
+</body>
+</html>
