@@ -508,20 +508,23 @@ async function performHealthCheck() {
           const analysis = result.analysis;
           console.log(`  ❌ ${number} - Erro: ${result.error} (Tentativa ${numberData.failedChecks}/${CONFIG.MAX_FAILED_CHECKS})`);
 
-          // Decidir ação baseada na análise
-          if (analysis.shouldRemove || numberData.failedChecks >= CONFIG.MAX_FAILED_CHECKS) {
-            // Remover número automaticamente
+          // ===== LÓGICA DE QUARENTENA CORRIGIDA =====
+          // QUALQUER erro desativa o número imediatamente
+          // Após 3 falhas consecutivas, remove automaticamente
+          
+          if (numberData.failedChecks >= CONFIG.MAX_FAILED_CHECKS) {
+            // 3ª FALHA: REMOVER número automaticamente
             await addLog('ban', `Número REMOVIDO automaticamente: ${number}`, { 
               appId: app.appId,
               reason: result.error,
               errorCode: result.errorCode,
               failedChecks: numberData.failedChecks,
-              analysis
+              severity: analysis.severity || 'high'
             });
 
             await sendNotification(
               '🚫 Número Banido/Removido',
-              `O número ${number} foi removido automaticamente após ${numberData.failedChecks} falhas.`,
+              `O número ${number} foi removido automaticamente após ${numberData.failedChecks} falhas consecutivas.`,
               { 
                 appId: app.appId, 
                 appName: app.appName, 
@@ -534,39 +537,45 @@ async function performHealthCheck() {
             app.numbers.delete(number);
             stats.totalBans++;
             results.removed++;
-            console.log(`    🗑️  REMOVIDO AUTOMATICAMENTE`);
-          } else if (analysis.isBanned) {
-            // Desativar e marcar para quarentena
+            console.log(`    🗑️  REMOVIDO AUTOMATICAMENTE (${numberData.failedChecks} falhas)`);
+            
+          } else {
+            // 1ª ou 2ª FALHA: DESATIVAR e colocar em QUARENTENA
             numberData.active = false;
             numberData.lastStatusChange = new Date();
             results.disabled++;
 
+            // Salvar as mudanças no Map
+            app.numbers.set(number, numberData);
+
+            // Log e notificação apenas na primeira falha
             if (numberData.failedChecks === 1) {
-              await addLog('quarantine', `Número em quarentena: ${number}`, { 
+              await addLog('quarantine', `Número em QUARENTENA (1ª falha): ${number}`, { 
                 appId: app.appId,
                 reason: result.error,
-                errorCode: result.errorCode
+                errorCode: result.errorCode,
+                errorType: analysis.isTemporary ? 'temporário' : 'permanente'
               });
 
               await sendNotification(
                 '⚠️ Número em Quarentena',
-                `O número ${number} foi desativado. Tentativa ${numberData.failedChecks}/${CONFIG.MAX_FAILED_CHECKS}`,
+                `O número ${number} foi DESATIVADO após erro. Ele tem ${CONFIG.MAX_FAILED_CHECKS} chances antes de ser removido. (Tentativa ${numberData.failedChecks}/${CONFIG.MAX_FAILED_CHECKS})`,
                 { 
                   appId: app.appId, 
                   appName: app.appName, 
                   number,
-                  reason: result.error
+                  reason: result.error,
+                  errorCode: result.errorCode
                 }
               );
             }
 
-            console.log(`    ⚠️  EM QUARENTENA (${numberData.failedChecks}/${CONFIG.MAX_FAILED_CHECKS})`);
-          } else if (analysis.isTemporary) {
-            console.log(`    ⏳ ERRO TEMPORÁRIO - mantendo ativo por enquanto`);
-            results.active++;
+            console.log(`    ⚠️  EM QUARENTENA - INATIVO (${numberData.failedChecks}/${CONFIG.MAX_FAILED_CHECKS} falhas)`);
+            
+            if (analysis.isTemporary) {
+              console.log(`    💡 Tipo: Erro temporário (será tentado novamente no próximo check)`);
+            }
           }
-
-          app.numbers.set(number, numberData);
 
           results.errors.push({
             appId: app.appId,
@@ -574,7 +583,8 @@ async function performHealthCheck() {
             number,
             error: result.error,
             errorCode: result.errorCode,
-            failedChecks: numberData.failedChecks
+            failedChecks: numberData.failedChecks,
+            inQuarantine: numberData.failedChecks < CONFIG.MAX_FAILED_CHECKS
           });
         }
       }
