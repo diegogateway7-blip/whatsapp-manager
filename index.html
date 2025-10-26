@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Manager - Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            color: #333;
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
+        .stat-label {
+            opacity: 0.9;
+            font-size: 0.9em;
+        }
+
+        .actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        button.secondary {
+            background: #48bb78;
+        }
+
+        button.secondary:hover {
+            background: #38a169;
+        }
+
+        button.danger {
+            background: #f56565;
+        }
+
+        button.danger:hover {
+            background: #e53e3e;
+        }
+
+        .apps-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .app-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+
+        .app-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .app-title {
+            font-size: 1.3em;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .app-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .icon-btn {
+            padding: 8px 12px;
+            font-size: 1.1em;
+            min-width: auto;
+        }
+
+        .numbers-list {
+            margin-top: 15px;
+        }
+
+        .number-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            margin: 8px 0;
+            background: #f7fafc;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .number-item.inactive {
+            border-left-color: #f56565;
+            opacity: 0.7;
+        }
+
+        .number-info {
+            flex: 1;
+        }
+
+        .number-text {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+        }
+
+        .number-status {
+            font-size: 0.85em;
+            color: #666;
+        }
+
+        .number-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 1em;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .error-text {
+            color: #f56565;
+            font-size: 0.85em;
+            margin-top: 4px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+
+        .empty-state h2 {
+            margin: 20px 0;
+            color: #333;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .badge.success {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .badge.error {
+            background: #fed7d7;
+            color: #742a2a;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📱 WhatsApp Manager</h1>
+            <p>Gerencie seus números e apps WhatsApp</p>
+            
+            <div class="stats" id="stats">
+                <div class="stat-card">
+                    <div class="stat-label">Total de Apps</div>
+                    <div class="stat-number" id="totalApps">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Total de Números</div>
+                    <div class="stat-number" id="totalNumbers">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Números Ativos</div>
+                    <div class="stat-number" id="activeNumbers">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Última Verificação</div>
+                    <div class="stat-number" style="font-size: 1em;" id="lastCheck">Nunca</div>
+                </div>
+            </div>
+
+            <div class="actions">
+                <button onclick="openAddAppModal()">➕ Adicionar App</button>
+                <button class="secondary" onclick="runHealthCheck()">🔍 Executar Health Check</button>
+                <button class="secondary" onclick="loadData()">🔄 Atualizar</button>
+            </div>
+        </header>
+
+        <div id="appsContainer"></div>
+    </div>
+
+    <!-- Modal: Adicionar/Editar App -->
+    <div class="modal" id="appModal">
+        <div class="modal-content">
+            <div class="modal-header" id="appModalTitle">Adicionar App</div>
+            <form onsubmit="saveApp(event)">
+                <div class="form-group">
+                    <label>App ID</label>
+                    <input type="text" id="appId" required placeholder="app_1">
+                </div>
+                <div class="form-group">
+                    <label>Nome do App</label>
+                    <input type="text" id="appName" required placeholder="App Principal">
+                </div>
+                <div class="form-group">
+                    <label>Token Permanente</label>
+                    <input type="text" id="token" required placeholder="EAAxxxxx...">
+                </div>
+                <div class="form-group">
+                    <label>Phone Number ID</label>
+                    <input type="text" id="phoneNumberId" required placeholder="123456789">
+                </div>
+                <div class="form-actions">
+                    <button type="submit">💾 Salvar</button>
+                    <button type="button" onclick="closeModal('appModal')">❌ Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Adicionar Número -->
+    <div class="modal" id="numberModal">
+        <div class="modal-content">
+            <div class="modal-header">Adicionar Número</div>
+            <form onsubmit="saveNumber(event)">
+                <div class="form-group">
+                    <label>Número (com código do país)</label>
+                    <input type="text" id="numberInput" required placeholder="5512982990488">
+                    <small style="color: #666;">Exemplo: 5512982990488 (sem espaços)</small>
+                </div>
+                <div class="form-actions">
+                    <button type="submit">💾 Adicionar</button>
+                    <button type="button" onclick="closeModal('numberModal')">❌ Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = window.location.origin;
+        let currentAppId = null;
+        let apps = {};
+
+        // Carregar dados
+        async function loadData() {
+            try {
+                const response = await fetch(`${API_URL}/api/apps`);
+                apps = await response.json();
+                renderApps();
+                updateStats();
+            } catch (error) {
+                console.error('Erro ao carregar dados:', error);
+            }
+        }
+
+        // Renderizar apps
+        function renderApps() {
+            const container = document.getElementById('appsContainer');
+            
+            if (Object.keys(apps).length === 0) {
+                container.innerHTML = `
+                    <div class="app-card">
+                        <div class="empty-state">
+                            <h2>Nenhum app cadastrado</h2>
+                            <p>Clique em "Adicionar App" para começar</p>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = '';
+            
+            for (const appId in apps) {
+                const app = apps[appId];
+                const numbers = Object.keys(app.numbers || {});
+                const activeCount = numbers.filter(n => app.numbers[n].active).length;
+                
+                const card = document.createElement('div');
+                card.className = 'app-card';
+                card.innerHTML = `
+                    <div class="app-header">
+                        <div class="app-title">${app.appName}</div>
+                        <div class="app-actions">
+                            <button class="icon-btn" onclick="openEditAppModal('${appId}')">✏️</button>
+                            <button class="icon-btn danger" onclick="deleteApp('${appId}')">🗑️</button>
+                        </div>
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <span class="badge success">${activeCount} ativos</span>
+                        <span class="badge error">${numbers.length - activeCount} inativos</span>
+                    </div>
+                    <div class="numbers-list">
+                        ${numbers.map(number => {
+                            const n = app.numbers[number];
+                            return `
+                                <div class="number-item ${n.active ? '' : 'inactive'}">
+                                    <div class="number-info">
+                                        <div class="number-text">${number}</div>
+                                        <div class="number-status">
+                                            ${n.active ? '✅ Ativo' : '❌ Inativo'}
+                                            ${n.error ? `<div class="error-text">${n.error}</div>` : ''}
+                                        </div>
+                                    </div>
+                                    <div class="number-actions">
+                                        <button class="icon-btn" onclick="toggleNumber('${appId}', '${number}')">
+                                            ${n.active ? '⏸️' : '▶️'}
+                                        </button>
+                                        <button class="icon-btn danger" onclick="deleteNumber('${appId}', '${number}')">🗑️</button>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                    <button style="margin-top: 15px; width: 100%;" onclick="openAddNumberModal('${appId}')">➕ Adicionar Número</button>
+                `;
+                
+                container.appendChild(card);
+            }
+        }
+
+        // Atualizar estatísticas
+        function updateStats() {
+            let totalNumbers = 0;
+            let activeNumbers = 0;
+
+            for (const appId in apps) {
+                const numbers = Object.keys(apps[appId].numbers || {});
+                totalNumbers += numbers.length;
+                activeNumbers += numbers.filter(n => apps[appId].numbers[n].active).length;
+            }
+
+            document.getElementById('totalApps').textContent = Object.keys(apps).length;
+            document.getElementById('totalNumbers').textContent = totalNumbers;
+            document.getElementById('activeNumbers').textContent = activeNumbers;
+        }
+
+        // Modais
+        function openAddAppModal() {
+            document.getElementById('appModalTitle').textContent = 'Adicionar App';
+            document.getElementById('appId').value = '';
+            document.getElementById('appId').disabled = false;
+            document.getElementById('appName').value = '';
+            document.getElementById('token').value = '';
+            document.getElementById('phoneNumberId').value = '';
+            currentAppId = null;
+            document.getElementById('appModal').classList.add('active');
+        }
+
+        function openEditAppModal(appId) {
+            const app = apps[appId];
+            document.getElementById('appModalTitle').textContent = 'Editar App';
+            document.getElementById('appId').value = appId;
+            document.getElementById('appId').disabled = true;
+            document.getElementById('appName').value = app.appName;
+            document.getElementById('token').value = app.token;
+            document.getElementById('phoneNumberId').value = app.phoneNumberId;
+            currentAppId = appId;
+            document.getElementById('appModal').classList.add('active');
+        }
+
+        function openAddNumberModal(appId) {
+            currentAppId = appId;
+            document.getElementById('numberInput').value = '';
+            document.getElementById('numberModal').classList.add('active');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        // Salvar app
+        async function saveApp(e) {
+            e.preventDefault();
+            
+            const appId = document.getElementById('appId').value;
+            const appName = document.getElementById('appName').value;
+            const token = document.getElementById('token').value;
+            const phoneNumberId = document.getElementById('phoneNumberId').value;
+
+            try {
+                const response = await fetch(`${API_URL}/api/apps`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ appId, appName, token, phoneNumberId })
+                });
+
+                if (response.ok) {
+                    closeModal('appModal');
+                    loadData();
+                    alert('✅ App salvo com sucesso!');
+                }
+            } catch (error) {
+                alert('❌ Erro ao salvar app');
+            }
+        }
+
+        // Salvar número
+        async function saveNumber(e) {
+            e.preventDefault();
+            
+            const number = document.getElementById('numberInput').value;
+
+            try {
+                const response = await fetch(`${API_URL}/api/apps/${currentAppId}/numbers`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ number })
+                });
+
+                if (response.ok) {
+                    closeModal('numberModal');
+                    loadData();
+                    alert('✅ Número adicionado!');
+                }
+            } catch (error) {
+                alert('❌ Erro ao adicionar número');
+            }
+        }
+
+        // Deletar app
+        async function deleteApp(appId) {
+            if (!confirm('Tem certeza que deseja deletar este app?')) return;
+
+            try {
+                await fetch(`${API_URL}/api/apps/${appId}`, { method: 'DELETE' });
+                loadData();
+            } catch (error) {
+                alert('❌ Erro ao deletar app');
+            }
+        }
+
+        // Deletar número
+        async function deleteNumber(appId, number) {
+            if (!confirm('Tem certeza que deseja deletar este número?')) return;
+
+            try {
+                await fetch(`${API_URL}/api/apps/${appId}/numbers/${number}`, { method: 'DELETE' });
+                loadData();
+            } catch (error) {
+                alert('❌ Erro ao deletar número');
+            }
+        }
+
+        // Toggle número
+        async function toggleNumber(appId, number) {
+            const currentStatus = apps[appId].numbers[number].active;
+
+            try {
+                await fetch(`${API_URL}/api/apps/${appId}/numbers/${number}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ active: !currentStatus })
+                });
+                loadData();
+            } catch (error) {
+                alert('❌ Erro ao atualizar número');
+            }
+        }
+
+        // Health check
+        async function runHealthCheck() {
+            if (!confirm('Executar health check em todos os apps?')) return;
+
+            try {
+                alert('🔍 Executando health check... Aguarde alguns segundos.');
+                await fetch(`${API_URL}/api/health-check`, { method: 'POST' });
+                setTimeout(() => {
+                    loadData();
+                    
