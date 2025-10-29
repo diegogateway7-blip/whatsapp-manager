@@ -401,7 +401,24 @@ function analyzeErrorCode(error) {
 
 async function checkWhatsAppNumber(token, phoneNumberId) {
   try {
-    // Buscar informações do Phone Number (apenas campos válidos)
+    console.log(`    🔍 Testando Phone Number ID: ${phoneNumberId}`);
+    console.log(`    🔑 Token: ${token.substring(0, 20)}...`);
+    
+    // PRIMEIRO: Tentar buscar sem campos específicos (teste básico)
+    const basicResponse = await axios.get(
+      `https://graph.facebook.com/${CONFIG.META_API_VERSION}/${phoneNumberId}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        timeout: 15000
+      }
+    );
+
+    console.log(`    ✅ Phone Number ID válido!`);
+    console.log(`    📊 Campos disponíveis:`, Object.keys(basicResponse.data).join(', '));
+    
+    // SEGUNDO: Buscar com campos específicos
     const response = await axios.get(
       `https://graph.facebook.com/${CONFIG.META_API_VERSION}/${phoneNumberId}`,
       {
@@ -409,8 +426,8 @@ async function checkWhatsAppNumber(token, phoneNumberId) {
           'Authorization': `Bearer ${token}`
         },
         params: {
-          // Campos válidos do Phone Number objeto
-          fields: 'id,display_phone_number,verified_name,quality_rating,code_verification_status'
+          // Campos comuns que geralmente existem
+          fields: 'id,display_phone_number,verified_name,quality_rating'
         },
         timeout: 15000
       }
@@ -422,56 +439,32 @@ async function checkWhatsAppNumber(token, phoneNumberId) {
     const displayPhoneNumber = numberData.display_phone_number || null;
     const verifiedName = numberData.verified_name || null;
     const qualityRating = numberData.quality_rating || 'UNKNOWN';
-    const codeVerificationStatus = numberData.code_verification_status || 'UNKNOWN';
+
+    console.log(`    📱 Número: ${displayPhoneNumber || 'N/A'}`);
+    console.log(`    🏢 Nome: ${verifiedName || 'Não verificado'}`);
+    console.log(`    ⭐ Quality: ${qualityRating}`);
 
     // ===== VERIFICAÇÃO DE QUALITY RATING =====
-    // Quality Rating RED indica problemas graves (número pode estar banido ou perto de ban)
     if (qualityRating === 'RED') {
       return {
         active: false,
-        error: 'Quality Rating: RED - Qualidade muito baixa. Número não pode enviar mensagens ou está perto de ser bloqueado.',
+        error: 'Quality Rating: RED - Qualidade muito baixa. Número não pode enviar mensagens.',
         errorCode: 'QUALITY_RED',
         analysis: {
-          isBanned: true, // Tratamos como banido pois não pode enviar
-          isTemporary: true, // Pode melhorar
-          shouldRemove: false, // Dá chances de recuperar
+          isBanned: true,
+          isTemporary: true,
+          shouldRemove: false,
           severity: 'high'
         },
         qualityRating,
         displayPhoneNumber,
-        verifiedName,
-        codeVerificationStatus
-      };
-    }
-
-    // ===== VERIFICAÇÃO DE CODE VERIFICATION =====
-    // Se código não foi verificado, número pode não funcionar
-    if (codeVerificationStatus === 'NOT_VERIFIED') {
-      return {
-        active: false,
-        error: 'Número não verificado. Complete a verificação no Meta Business Manager.',
-        errorCode: 'NOT_VERIFIED',
-        analysis: {
-          isBanned: false,
-          isTemporary: true,
-          shouldRemove: false,
-          severity: 'medium'
-        },
-        qualityRating,
-        displayPhoneNumber,
-        verifiedName,
-        codeVerificationStatus
+        verifiedName
       };
     }
 
     // ===== AVISO SE QUALITY RATING AMARELO =====
     if (qualityRating === 'YELLOW') {
-      console.log(`    ⚠️  Quality Rating: YELLOW - Atenção necessária! Melhore a qualidade das mensagens.`);
-    }
-
-    // ===== AVISO SE NÃO TEM NOME VERIFICADO =====
-    if (!verifiedName) {
-      console.log(`    ℹ️  Nome não verificado - Considere verificar o nome do negócio`);
+      console.log(`    ⚠️  Quality Rating: YELLOW - Atenção necessária!`);
     }
 
     // Tudo OK - número pode enviar mensagens
@@ -482,22 +475,39 @@ async function checkWhatsAppNumber(token, phoneNumberId) {
       analysis: null,
       qualityRating,
       displayPhoneNumber,
-      verifiedName,
-      codeVerificationStatus
+      verifiedName
     };
     
   } catch (error) {
+    console.log(`    ❌ ERRO na API:`, error.message);
+    
     const analysis = analyzeErrorCode(error);
     let errorMessage = 'Erro desconhecido';
     let errorCode = null;
     
     if (error.response) {
       errorCode = error.response.data?.error?.code || error.response.status;
-      errorMessage = error.response.data?.error?.message || `HTTP ${error.response.status}`;
+      const errorDetails = error.response.data?.error || {};
+      errorMessage = errorDetails.message || `HTTP ${error.response.status}`;
       
-      // Erro específico de campo não encontrado
+      console.log(`    ❌ Código do erro: ${errorCode}`);
+      console.log(`    ❌ Mensagem: ${errorMessage}`);
+      console.log(`    ❌ Detalhes completos:`, JSON.stringify(errorDetails, null, 2));
+      
+      // Mensagens de erro mais úteis
       if (errorCode === 100) {
-        errorMessage = 'Erro ao buscar informações do número. Verifique se o Phone Number ID está correto.';
+        errorMessage = `Erro #100: Campo inválido ou Phone Number ID incorreto. 
+        
+Verifique:
+1. Phone Number ID (não é o Business Account ID!)
+2. Token tem permissões: whatsapp_business_management, whatsapp_business_messaging
+3. Número está registrado na conta correta
+
+Phone Number ID usado: ${phoneNumberId}`;
+      } else if (errorCode === 190) {
+        errorMessage = 'Token inválido ou expirado. Gere um novo token permanente no Meta Business.';
+      } else if (errorCode === 200 || errorCode === 10) {
+        errorMessage = 'Token sem permissões corretas. Adicione: whatsapp_business_management e whatsapp_business_messaging';
       }
     } else if (error.code === 'ECONNABORTED') {
       errorMessage = 'Timeout na requisição';
@@ -568,7 +578,6 @@ async function performHealthCheck() {
           numberData.qualityRating = result.qualityRating;
           numberData.displayPhoneNumber = result.displayPhoneNumber;
           numberData.verifiedName = result.verifiedName;
-          numberData.codeVerificationStatus = result.codeVerificationStatus;
           results.active++;
 
           console.log(`  ✅ ${number} - Ativo | Quality: ${result.qualityRating} | Display: ${result.displayPhoneNumber || 'N/A'} | Verified: ${result.verifiedName ? 'Sim' : 'Não'}`);
