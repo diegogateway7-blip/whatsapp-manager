@@ -17,6 +17,8 @@ const appSchema = new mongoose.Schema({
   appName: { type: String, required: true },
   token: { type: String, required: true },
   phoneNumberId: { type: String, required: true },
+  testPhoneNumber: { type: String, default: null }, // Número para teste de envio
+  lastMessageWindowRenewal: { type: Date, default: null }, // Quando renovar janela 24h
   numbers: { type: Map, of: numberSchema },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }

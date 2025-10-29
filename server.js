@@ -123,6 +123,30 @@ app.post('/api/apps', async (req, res) => {
   }
 });
 
+// Renovar janela de 24h manualmente
+app.post('/api/apps/:appId/renew-window', async (req, res) => {
+  const { appId } = req.params;
+  
+  try {
+    const app = await App.findOne({ appId });
+    if (!app) {
+      return res.status(404).json({ error: 'App não encontrado' });
+    }
+
+    app.lastMessageWindowRenewal = new Date();
+    await app.save();
+    
+    await addLog('app', `Janela de 24h renovada: ${app.appName}`, { appId });
+    res.json({ 
+      success: true, 
+      renewedAt: app.lastMessageWindowRenewal,
+      message: 'Janela renovada! Envie uma mensagem do número de teste para o WhatsApp do app para manter ativa.'
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Deletar app
 app.delete('/api/apps/:appId', async (req, res) => {
   const { appId } = req.params;
@@ -399,6 +423,98 @@ function analyzeErrorCode(error) {
   return errorAnalysis;
 }
 
+// Função para testar envio REAL de mensagem (método mais confiável!)
+async function checkWhatsAppNumberByMessageSend(token, phoneNumberId, testPhoneNumber) {
+  try {
+    console.log(`    📤 TESTE REAL: Enviando mensagem para ${testPhoneNumber}`);
+    
+    // Tentar enviar mensagem de teste
+    const response = await axios.post(
+      `https://graph.facebook.com/${CONFIG.META_API_VERSION}/${phoneNumberId}/messages`,
+      {
+        messaging_product: 'whatsapp',
+        to: testPhoneNumber,
+        type: 'text',
+        text: {
+          body: '✅ Health check automático - Número funcionando!'
+        }
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000
+      }
+    );
+
+    console.log(`    ✅ MENSAGEM ENVIADA! Número 100% funcional!`);
+    console.log(`    📊 Message ID:`, response.data.messages?.[0]?.id || 'N/A');
+
+    return {
+      active: true,
+      error: null,
+      errorCode: null,
+      analysis: null,
+      testMethod: 'MESSAGE_SEND',
+      messageId: response.data.messages?.[0]?.id,
+      qualityRating: 'TESTED' // Testado por envio real!
+    };
+
+  } catch (error) {
+    console.log(`    ❌ ERRO AO ENVIAR MENSAGEM:`, error.message);
+
+    const analysis = analyzeErrorCode(error);
+    let errorMessage = 'Erro desconhecido';
+    let errorCode = null;
+
+    if (error.response) {
+      errorCode = error.response.data?.error?.code || error.response.status;
+      const errorDetails = error.response.data?.error || {};
+      errorMessage = errorDetails.message || `HTTP ${error.response.status}`;
+
+      console.log(`    ❌ Código do erro: ${errorCode}`);
+      console.log(`    ❌ Mensagem: ${errorMessage}`);
+      console.log(`    ❌ Tipo de erro:`, errorDetails.error_subcode || 'N/A');
+
+      // Análise específica de erros de envio
+      if (errorCode === 131031) {
+        errorMessage = 'CONTA DESABILITADA/RESTRITA pelo WhatsApp. Não pode enviar mensagens!';
+        analysis.isBanned = true;
+        analysis.shouldRemove = false;
+      } else if (errorCode === 131056) {
+        errorMessage = 'Messaging not allowed. Conta sem permissão para enviar mensagens.';
+        analysis.isBanned = true;
+        analysis.shouldRemove = false;
+      } else if (errorCode === 368) {
+        errorMessage = 'Conta temporariamente bloqueada por violação de políticas.';
+        analysis.isBanned = true;
+        analysis.isTemporary = true;
+      } else if (errorCode === 131047) {
+        errorMessage = 'Janela de 24 horas expirou. Peça para o número de teste mandar uma mensagem novamente.';
+        analysis.isTemporary = true;
+        analysis.isBanned = false;
+      } else if (errorCode === 131026) {
+        errorMessage = 'Número de destino inválido ou não tem WhatsApp.';
+        analysis.isTemporary = true;
+        analysis.isBanned = false;
+      } else if (errorCode === 130429) {
+        errorMessage = 'Rate limit atingido. Aguarde antes de testar novamente.';
+        analysis.isTemporary = true;
+      }
+    }
+
+    return {
+      active: false,
+      error: errorMessage,
+      errorCode,
+      analysis,
+      testMethod: 'MESSAGE_SEND'
+    };
+  }
+}
+
+// Função para verificar via API (método fallback)
 async function checkWhatsAppNumber(token, phoneNumberId) {
   try {
     console.log(`    🔍 Testando Phone Number ID: ${phoneNumberId}`);
@@ -588,7 +704,25 @@ async function performHealthCheck() {
     for (const app of apps) {
       console.log(`\n📱 Verificando ${app.appName} (${app.appId})...`);
 
-    const result = await checkWhatsAppNumber(app.token, app.phoneNumberId);
+      // Escolher método de verificação
+      let result;
+      if (app.testPhoneNumber) {
+        console.log(`    💡 Usando TESTE REAL por envio de mensagem`);
+        result = await checkWhatsAppNumberByMessageSend(app.token, app.phoneNumberId, app.testPhoneNumber);
+        
+        // Verificar se janela de 24h está próxima de expirar
+        if (app.lastMessageWindowRenewal) {
+          const hoursSinceRenewal = (new Date() - new Date(app.lastMessageWindowRenewal)) / (1000 * 60 * 60);
+          if (hoursSinceRenewal > 23) {
+            console.log(`    ⚠️  ATENÇÃO: Janela de 24h vai expirar em breve! Renove enviando mensagem do ${app.testPhoneNumber}`);
+          } else {
+            console.log(`    ⏰ Janela válida por mais ${Math.floor(24 - hoursSinceRenewal)}h`);
+          }
+        }
+      } else {
+        console.log(`    💡 Usando verificação por API (configure testPhoneNumber para teste real)`);
+        result = await checkWhatsAppNumber(app.token, app.phoneNumberId);
+      }
     
     // Atualizar status de todos os números deste app
       for (const [number, numberData] of app.numbers) {

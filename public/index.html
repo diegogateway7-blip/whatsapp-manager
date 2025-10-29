@@ -808,6 +808,16 @@
                     <input type="text" id="phoneNumberId" required placeholder="123456789" autocomplete="off">
                     <small style="color: #666;">ID do número no Meta Business</small>
                 </div>
+                <div class="form-group">
+                    <label>Número de Teste (Opcional - Recomendado!) 🎯</label>
+                    <input type="text" id="testPhoneNumber" placeholder="5511999999999" autocomplete="off">
+                    <small style="color: #666;">
+                        <strong>RECOMENDADO:</strong> Seu número pessoal para testar envio REAL de mensagens.<br>
+                        1. Envie uma mensagem do seu número para o WhatsApp do app<br>
+                        2. Cole seu número aqui (com DDI, sem +)<br>
+                        3. Sistema testará enviando mensagem de verdade (100% confiável!)
+                    </small>
+                </div>
                 <div class="form-actions">
                     <button type="submit">
                         <span>💾</span>
@@ -1124,6 +1134,7 @@
             document.getElementById('appName').value = '';
             document.getElementById('token').value = '';
             document.getElementById('phoneNumberId').value = '';
+            document.getElementById('testPhoneNumber').value = '';
             currentAppId = null;
             document.getElementById('appModal').classList.add('active');
         }
@@ -1136,6 +1147,7 @@
             document.getElementById('appName').value = app.appName;
             document.getElementById('token').value = app.token;
             document.getElementById('phoneNumberId').value = app.phoneNumberId;
+            document.getElementById('testPhoneNumber').value = app.testPhoneNumber || '';
             currentAppId = appId;
             document.getElementById('appModal').classList.add('active');
         }
@@ -1183,12 +1195,13 @@
             const appName = document.getElementById('appName').value.trim();
             const token = document.getElementById('token').value.trim();
             const phoneNumberId = document.getElementById('phoneNumberId').value.trim();
+            const testPhoneNumber = document.getElementById('testPhoneNumber').value.trim();
 
             try {
                 const response = await fetch(`${API_URL}/api/apps`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ appId, appName, token, phoneNumberId })
+                    body: JSON.stringify({ appId, appName, token, phoneNumberId, testPhoneNumber: testPhoneNumber || null })
                 });
 
                 if (response.ok) {
