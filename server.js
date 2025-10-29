@@ -246,7 +246,7 @@ app.get('/api/get-active-number', async (req, res) => {
             appName: app.appName,
             lastCheck: data.lastCheck
           });
-        }
+      }
     }
   }
 
@@ -294,7 +294,7 @@ app.get('/api/status', async (req, res) => {
       totalNumbers++;
         if (data.active) {
         activeNumbers++;
-        }
+      }
         if (data.failedChecks > 0 && data.failedChecks < CONFIG.MAX_FAILED_CHECKS) {
           inQuarantine++;
         }
@@ -404,21 +404,7 @@ async function checkWhatsAppNumber(token, phoneNumberId) {
     console.log(`    🔍 Testando Phone Number ID: ${phoneNumberId}`);
     console.log(`    🔑 Token: ${token.substring(0, 20)}...`);
     
-    // PRIMEIRO: Tentar buscar sem campos específicos (teste básico)
-    const basicResponse = await axios.get(
-      `https://graph.facebook.com/${CONFIG.META_API_VERSION}/${phoneNumberId}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        timeout: 15000
-      }
-    );
-
-    console.log(`    ✅ Phone Number ID válido!`);
-    console.log(`    📊 Campos disponíveis:`, Object.keys(basicResponse.data).join(', '));
-    
-    // SEGUNDO: Buscar com campos específicos
+    // PRIMEIRO: Buscar informações do Phone Number
     const response = await axios.get(
       `https://graph.facebook.com/${CONFIG.META_API_VERSION}/${phoneNumberId}`,
       {
@@ -426,12 +412,14 @@ async function checkWhatsAppNumber(token, phoneNumberId) {
           'Authorization': `Bearer ${token}`
         },
         params: {
-          // Campos comuns que geralmente existem
-          fields: 'id,display_phone_number,verified_name,quality_rating'
+          fields: 'id,display_phone_number,verified_name,quality_rating,account_mode,name_status'
         },
         timeout: 15000
       }
     );
+
+    console.log(`    ✅ Phone Number ID válido!`);
+    console.log(`    📊 Campos disponíveis:`, Object.keys(response.data).join(', '));
 
     const numberData = response.data;
     
@@ -439,16 +427,51 @@ async function checkWhatsAppNumber(token, phoneNumberId) {
     const displayPhoneNumber = numberData.display_phone_number || null;
     const verifiedName = numberData.verified_name || null;
     const qualityRating = numberData.quality_rating || 'UNKNOWN';
+    const accountMode = numberData.account_mode || 'UNKNOWN';
+    const nameStatus = numberData.name_status || 'UNKNOWN';
 
     console.log(`    📱 Número: ${displayPhoneNumber || 'N/A'}`);
     console.log(`    🏢 Nome: ${verifiedName || 'Não verificado'}`);
     console.log(`    ⭐ Quality: ${qualityRating}`);
+    console.log(`    🔒 Account Mode: ${accountMode}`);
+    console.log(`    📝 Name Status: ${nameStatus}`);
+
+    // SEGUNDO: Tentar verificar status da WABA (conta)
+    // Pegar o WABA ID do número
+    let wabaRestricted = false;
+    let wabaStatus = 'UNKNOWN';
+    
+    try {
+      // Buscar a qual WABA este número pertence
+      const wabaResponse = await axios.get(
+        `https://graph.facebook.com/${CONFIG.META_API_VERSION}/${phoneNumberId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
+          params: {
+            fields: 'account_mode,is_official_business_account'
+          },
+          timeout: 10000
+        }
+      );
+      
+      wabaStatus = wabaResponse.data.account_mode || 'UNKNOWN';
+      
+      // SANDBOX ou LIVE mode
+      if (wabaResponse.data.account_mode === 'SANDBOX') {
+        console.log(`    ⚠️  Conta em modo SANDBOX - funcionalidade limitada`);
+      }
+      
+    } catch (wabaError) {
+      console.log(`    ⚠️  Não foi possível verificar status da WABA:`, wabaError.message);
+    }
 
     // ===== VERIFICAÇÃO DE QUALITY RATING =====
     if (qualityRating === 'RED') {
       return {
         active: false,
-        error: 'Quality Rating: RED - Qualidade muito baixa. Número não pode enviar mensagens.',
+        error: 'Quality Rating: RED - Qualidade muito baixa. Número restrito ou banido.',
         errorCode: 'QUALITY_RED',
         analysis: {
           isBanned: true,
@@ -458,16 +481,30 @@ async function checkWhatsAppNumber(token, phoneNumberId) {
         },
         qualityRating,
         displayPhoneNumber,
-        verifiedName
+        verifiedName,
+        accountMode,
+        wabaStatus
       };
+    }
+
+    // ===== VERIFICAÇÃO DE NAME STATUS =====
+    // Se nome foi rejeitado, pode ter restrições
+    if (nameStatus === 'DECLINED' || nameStatus === 'PENDING_REVIEW') {
+      console.log(`    ⚠️  Name Status: ${nameStatus} - Pode ter limitações`);
     }
 
     // ===== AVISO SE QUALITY RATING AMARELO =====
     if (qualityRating === 'YELLOW') {
-      console.log(`    ⚠️  Quality Rating: YELLOW - Atenção necessária!`);
+      console.log(`    ⚠️  Quality Rating: YELLOW - Atenção necessária! Conta pode ser restrita em breve.`);
     }
 
-    // Tudo OK - número pode enviar mensagens
+    // ===== AVISO IMPORTANTE =====
+    // Se a conta aparece como "Conectado" mas não envia, pode ser restrição no nível da WABA
+    // Isso NÃO aparece na API do Phone Number!
+    console.log(`    💡 Nota: Se o número está "Conectado" mas não envia mensagens,`);
+    console.log(`    💡 verifique manualmente no Meta Business Manager se a CONTA está restrita.`);
+
+    // Tudo OK na verificação da API
     return { 
       active: true, 
       error: null,
@@ -475,7 +512,9 @@ async function checkWhatsAppNumber(token, phoneNumberId) {
       analysis: null,
       qualityRating,
       displayPhoneNumber,
-      verifiedName
+      verifiedName,
+      accountMode,
+      wabaStatus
     };
     
   } catch (error) {
@@ -508,6 +547,10 @@ Phone Number ID usado: ${phoneNumberId}`;
         errorMessage = 'Token inválido ou expirado. Gere um novo token permanente no Meta Business.';
       } else if (errorCode === 200 || errorCode === 10) {
         errorMessage = 'Token sem permissões corretas. Adicione: whatsapp_business_management e whatsapp_business_messaging';
+      } else if (errorCode === 131031 || errorCode === 131056) {
+        errorMessage = 'CONTA RESTRITA ou BANIDA pelo WhatsApp. Não pode enviar mensagens.';
+        analysis.isBanned = true;
+        analysis.shouldRemove = false; // Pode ser temporário
       }
     } else if (error.code === 'ECONNABORTED') {
       errorMessage = 'Timeout na requisição';
