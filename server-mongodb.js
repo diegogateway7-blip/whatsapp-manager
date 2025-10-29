@@ -401,7 +401,7 @@ function analyzeErrorCode(error) {
 
 async function checkWhatsAppNumber(token, phoneNumberId) {
   try {
-    // Buscar informações completas do número
+    // Buscar informações do Phone Number (apenas campos válidos)
     const response = await axios.get(
       `https://graph.facebook.com/${CONFIG.META_API_VERSION}/${phoneNumberId}`,
       {
@@ -409,7 +409,8 @@ async function checkWhatsAppNumber(token, phoneNumberId) {
           'Authorization': `Bearer ${token}`
         },
         params: {
-          fields: 'id,display_phone_number,verified_name,quality_rating,account_review_status,messaging_limit_tier'
+          // Campos válidos do Phone Number objeto
+          fields: 'id,display_phone_number,verified_name,quality_rating,code_verification_status'
         },
         timeout: 15000
       }
@@ -417,57 +418,39 @@ async function checkWhatsAppNumber(token, phoneNumberId) {
 
     const numberData = response.data;
     
-    // Extrair informações importantes
-    const qualityRating = numberData.quality_rating || 'UNKNOWN';
-    const accountReviewStatus = numberData.account_review_status || 'UNKNOWN';
-    const messagingLimitTier = numberData.messaging_limit_tier || 'UNKNOWN';
+    // Extrair informações do Phone Number
+    const displayPhoneNumber = numberData.display_phone_number || null;
     const verifiedName = numberData.verified_name || null;
-
-    // ===== VERIFICAÇÃO DE STATUS DA CONTA =====
-    // Contas REJECTED ou RESTRICTED não podem enviar mensagens
-    if (accountReviewStatus === 'REJECTED' || accountReviewStatus === 'RESTRICTED') {
-      return {
-        active: false,
-        error: `Conta ${accountReviewStatus === 'REJECTED' ? 'REJEITADA' : 'RESTRITA'} pelo WhatsApp Business. Não pode enviar mensagens.`,
-        errorCode: 'ACCOUNT_' + accountReviewStatus,
-        analysis: {
-          isBanned: true,
-          isTemporary: false,
-          shouldRemove: false, // Não remove automático, pode ser temporário
-          severity: 'high'
-        },
-        qualityRating,
-        accountReviewStatus,
-        messagingLimitTier
-      };
-    }
+    const qualityRating = numberData.quality_rating || 'UNKNOWN';
+    const codeVerificationStatus = numberData.code_verification_status || 'UNKNOWN';
 
     // ===== VERIFICAÇÃO DE QUALITY RATING =====
-    // Quality Rating RED indica problemas graves
+    // Quality Rating RED indica problemas graves (número pode estar banido ou perto de ban)
     if (qualityRating === 'RED') {
       return {
         active: false,
-        error: 'Quality Rating: RED - Qualidade muito baixa. Risco de bloqueio iminente.',
+        error: 'Quality Rating: RED - Qualidade muito baixa. Número não pode enviar mensagens ou está perto de ser bloqueado.',
         errorCode: 'QUALITY_RED',
         analysis: {
-          isBanned: false,
+          isBanned: true, // Tratamos como banido pois não pode enviar
           isTemporary: true, // Pode melhorar
-          shouldRemove: false,
+          shouldRemove: false, // Dá chances de recuperar
           severity: 'high'
         },
         qualityRating,
-        accountReviewStatus,
-        messagingLimitTier
+        displayPhoneNumber,
+        verifiedName,
+        codeVerificationStatus
       };
     }
 
-    // ===== VERIFICAÇÃO DE MESSAGING LIMIT =====
-    // Se não tem tier configurado, pode ter problemas
-    if (messagingLimitTier === 'NOT_SET' || messagingLimitTier === 'UNKNOWN') {
+    // ===== VERIFICAÇÃO DE CODE VERIFICATION =====
+    // Se código não foi verificado, número pode não funcionar
+    if (codeVerificationStatus === 'NOT_VERIFIED') {
       return {
         active: false,
-        error: 'Messaging Limit Tier não configurado. Número pode não conseguir enviar mensagens.',
-        errorCode: 'TIER_NOT_SET',
+        error: 'Número não verificado. Complete a verificação no Meta Business Manager.',
+        errorCode: 'NOT_VERIFIED',
         analysis: {
           isBanned: false,
           isTemporary: true,
@@ -475,19 +458,20 @@ async function checkWhatsAppNumber(token, phoneNumberId) {
           severity: 'medium'
         },
         qualityRating,
-        accountReviewStatus,
-        messagingLimitTier
+        displayPhoneNumber,
+        verifiedName,
+        codeVerificationStatus
       };
-    }
-
-    // ===== AVISO SE CONTA EM ANÁLISE =====
-    if (accountReviewStatus === 'PENDING') {
-      console.log(`    ⚠️  Conta em análise (PENDING) - Funcionalidade pode estar limitada`);
     }
 
     // ===== AVISO SE QUALITY RATING AMARELO =====
     if (qualityRating === 'YELLOW') {
-      console.log(`    ⚠️  Quality Rating: YELLOW - Atenção necessária`);
+      console.log(`    ⚠️  Quality Rating: YELLOW - Atenção necessária! Melhore a qualidade das mensagens.`);
+    }
+
+    // ===== AVISO SE NÃO TEM NOME VERIFICADO =====
+    if (!verifiedName) {
+      console.log(`    ℹ️  Nome não verificado - Considere verificar o nome do negócio`);
     }
 
     // Tudo OK - número pode enviar mensagens
@@ -497,9 +481,9 @@ async function checkWhatsAppNumber(token, phoneNumberId) {
       errorCode: null,
       analysis: null,
       qualityRating,
-      accountReviewStatus,
-      messagingLimitTier,
-      verifiedName
+      displayPhoneNumber,
+      verifiedName,
+      codeVerificationStatus
     };
     
   } catch (error) {
@@ -510,6 +494,11 @@ async function checkWhatsAppNumber(token, phoneNumberId) {
     if (error.response) {
       errorCode = error.response.data?.error?.code || error.response.status;
       errorMessage = error.response.data?.error?.message || `HTTP ${error.response.status}`;
+      
+      // Erro específico de campo não encontrado
+      if (errorCode === 100) {
+        errorMessage = 'Erro ao buscar informações do número. Verifique se o Phone Number ID está correto.';
+      }
     } else if (error.code === 'ECONNABORTED') {
       errorMessage = 'Timeout na requisição';
       analysis.isTemporary = true;
@@ -577,12 +566,12 @@ async function performHealthCheck() {
           numberData.errorCode = null;
           numberData.failedChecks = 0;
           numberData.qualityRating = result.qualityRating;
-          numberData.accountReviewStatus = result.accountReviewStatus;
-          numberData.messagingLimitTier = result.messagingLimitTier;
+          numberData.displayPhoneNumber = result.displayPhoneNumber;
           numberData.verifiedName = result.verifiedName;
+          numberData.codeVerificationStatus = result.codeVerificationStatus;
           results.active++;
 
-          console.log(`  ✅ ${number} - Ativo | Quality: ${result.qualityRating} | Status: ${result.accountReviewStatus} | Tier: ${result.messagingLimitTier}`);
+          console.log(`  ✅ ${number} - Ativo | Quality: ${result.qualityRating} | Display: ${result.displayPhoneNumber || 'N/A'} | Verified: ${result.verifiedName ? 'Sim' : 'Não'}`);
         } else {
           // Número com erro
           numberData.error = result.error;
