@@ -418,7 +418,10 @@ async function checkWhatsAppNumberByMessageSend(token, phoneNumberId, testPhoneN
   try {
     console.log(`    📤 TESTE REAL: Enviando mensagem para ${testPhoneNumber}`);
     
-    // Tentar enviar mensagem de teste
+    // Enviar mensagem de teste para verificar se número está ativo
+    const now = new Date();
+    const timeStr = now.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    
     const response = await axios.post(
       `https://graph.facebook.com/${CONFIG.META_API_VERSION}/${phoneNumberId}/messages`,
       {
@@ -426,7 +429,7 @@ async function checkWhatsAppNumberByMessageSend(token, phoneNumberId, testPhoneN
         to: testPhoneNumber,
         type: 'text',
         text: {
-          body: '✅ Health check automático - Número funcionando!'
+          body: `✅ Número ativo - ${timeStr}`
         }
       },
       {
