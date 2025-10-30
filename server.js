@@ -229,22 +229,25 @@ app.patch('/api/apps/:appId/numbers/:number', async (req, res) => {
   try {
     const app = await App.findOne({ appId });
     if (!app || !app.numbers.has(number)) {
-    return res.status(404).json({ error: 'App ou número não encontrado' });
-  }
+      return res.status(404).json({ error: 'App ou número não encontrado' });
+    }
 
     const numberData = app.numbers.get(number);
     numberData.active = active;
     numberData.lastStatusChange = new Date();
     
     if (active) {
+      // Ao reativar, reseta contador de falhas e erros
       numberData.failedChecks = 0;
       numberData.error = null;
       numberData.errorCode = null;
+      await addLog('number', `Número REATIVADO manualmente: ${number} - Contador de falhas resetado`, { appId, number });
+    } else {
+      await addLog('number', `Número desativado manualmente: ${number}`, { appId, number });
     }
 
     app.numbers.set(number, numberData);
     await app.save();
-    await addLog('number', `Número ${active ? 'ativado' : 'desativado'} manualmente: ${number}`, { appId, number });
     
     res.json({ success: true, number: numberData });
   } catch (error) {
@@ -478,6 +481,7 @@ async function checkWhatsAppNumberByMessageSend(token, phoneNumberId, testPhoneN
       console.log(`    ❌ Tipo de erro:`, errorDetails.error_subcode || 'N/A');
 
       // Análise específica de erros de envio
+      // QUALQUER ERRO desativa o número - operador decide se reativa ou exclui
       if (errorCode === 131031) {
         errorMessage = 'CONTA DESABILITADA/RESTRITA pelo WhatsApp. Não pode enviar mensagens!';
         analysis.isBanned = true;
@@ -489,18 +493,19 @@ async function checkWhatsAppNumberByMessageSend(token, phoneNumberId, testPhoneN
       } else if (errorCode === 368) {
         errorMessage = 'Conta temporariamente bloqueada por violação de políticas.';
         analysis.isBanned = true;
-        analysis.isTemporary = true;
+        analysis.shouldRemove = false;
       } else if (errorCode === 131047) {
-        errorMessage = 'Janela de 24 horas expirou. Peça para o número de teste mandar uma mensagem novamente.';
-        analysis.isTemporary = true;
-        analysis.isBanned = false;
+        errorMessage = 'Erro ao enviar mensagem (#131047). Pode ser: janela de 24h expirou OU conta restrita. Operador deve verificar.';
+        analysis.isBanned = true; // Trata como erro sério
+        analysis.shouldRemove = false;
       } else if (errorCode === 131026) {
         errorMessage = 'Número de destino inválido ou não tem WhatsApp.';
-        analysis.isTemporary = true;
-        analysis.isBanned = false;
+        analysis.isBanned = true;
+        analysis.shouldRemove = false;
       } else if (errorCode === 130429) {
         errorMessage = 'Rate limit atingido. Aguarde antes de testar novamente.';
-        analysis.isTemporary = true;
+        analysis.isBanned = true;
+        analysis.shouldRemove = false;
       }
     }
 
@@ -693,7 +698,6 @@ async function performHealthCheck() {
     checked: 0,
     active: 0,
     disabled: 0,
-    removed: 0,
     errors: []
   };
 
@@ -769,11 +773,19 @@ async function performHealthCheck() {
 
           // ===== LÓGICA DE QUARENTENA CORRIGIDA =====
           // QUALQUER erro desativa o número imediatamente
-          // Após 3 falhas consecutivas, remove automaticamente
+          // Após 3 falhas consecutivas, DESATIVA permanentemente (não remove!)
+          // Operador decide se reativa ou exclui manualmente
+          
+          // SEMPRE DESATIVA o número ao ter erro
+          numberData.active = false;
+          numberData.lastStatusChange = new Date();
+          
+          // Salvar as mudanças no Map
+          app.numbers.set(number, numberData);
           
           if (numberData.failedChecks >= CONFIG.MAX_FAILED_CHECKS) {
-            // 3ª FALHA: REMOVER número automaticamente
-            await addLog('ban', `Número REMOVIDO automaticamente: ${number}`, { 
+            // 3ª FALHA: DESATIVADO PERMANENTEMENTE (não remove!)
+            await addLog('ban', `Número DESATIVADO após 3 falhas: ${number}`, { 
               appId: app.appId,
               reason: result.error,
               errorCode: result.errorCode,
@@ -782,43 +794,37 @@ async function performHealthCheck() {
             });
 
             await sendNotification(
-              '🚫 Número Banido/Removido',
-              `O número ${number} foi removido automaticamente após ${numberData.failedChecks} falhas consecutivas.`,
+              '🚫 Número Desativado Permanentemente',
+              `O número ${number} foi DESATIVADO após ${numberData.failedChecks} falhas consecutivas. AÇÃO NECESSÁRIA: Verificar manualmente e decidir se reativa ou exclui.`,
               { 
                 appId: app.appId, 
                 appName: app.appName, 
                 number,
                 reason: result.error,
-                errorCode: result.errorCode
+                errorCode: result.errorCode,
+                action: 'VERIFICAÇÃO MANUAL NECESSÁRIA'
               }
             );
 
-            app.numbers.delete(number);
             stats.totalBans++;
-            results.removed++;
-            console.log(`    🗑️  REMOVIDO AUTOMATICAMENTE (${numberData.failedChecks} falhas)`);
+            results.disabled++;
+            console.log(`    🚫 DESATIVADO PERMANENTEMENTE (${numberData.failedChecks} falhas) - Verificação manual necessária`);
             
           } else {
             // 1ª ou 2ª FALHA: DESATIVAR e colocar em QUARENTENA
-            numberData.active = false;
-            numberData.lastStatusChange = new Date();
             results.disabled++;
-
-            // Salvar as mudanças no Map
-            app.numbers.set(number, numberData);
 
             // Log e notificação apenas na primeira falha
             if (numberData.failedChecks === 1) {
               await addLog('quarantine', `Número em QUARENTENA (1ª falha): ${number}`, { 
                 appId: app.appId,
                 reason: result.error,
-                errorCode: result.errorCode,
-                errorType: analysis.isTemporary ? 'temporário' : 'permanente'
+                errorCode: result.errorCode
               });
 
               await sendNotification(
                 '⚠️ Número em Quarentena',
-                `O número ${number} foi DESATIVADO após erro. Ele tem ${CONFIG.MAX_FAILED_CHECKS} chances antes de ser removido. (Tentativa ${numberData.failedChecks}/${CONFIG.MAX_FAILED_CHECKS})`,
+                `O número ${number} foi DESATIVADO após erro. Tentativa ${numberData.failedChecks}/${CONFIG.MAX_FAILED_CHECKS}. Será testado novamente no próximo health check.`,
                 { 
                   appId: app.appId, 
                   appName: app.appName, 
@@ -830,10 +836,7 @@ async function performHealthCheck() {
             }
 
             console.log(`    ⚠️  EM QUARENTENA - INATIVO (${numberData.failedChecks}/${CONFIG.MAX_FAILED_CHECKS} falhas)`);
-            
-            if (analysis.isTemporary) {
-              console.log(`    💡 Tipo: Erro temporário (será tentado novamente no próximo check)`);
-            }
+            console.log(`    💡 Será testado novamente no próximo health check`);
           }
 
           results.errors.push({
@@ -858,9 +861,8 @@ async function performHealthCheck() {
     console.log('\n📊 ========== RESULTADO DO HEALTH CHECK ==========');
     console.log(`✅ Números verificados: ${results.checked}`);
     console.log(`✅ Ativos: ${results.active}`);
-    console.log(`⚠️  Desativados: ${results.disabled}`);
-    console.log(`🗑️  Removidos: ${results.removed}`);
-    console.log(`❌ Erros: ${results.errors.length}`);
+    console.log(`⚠️  Desativados/Quarentena: ${results.disabled}`);
+    console.log(`❌ Erros detectados: ${results.errors.length}`);
     console.log('================================================\n');
 
     await addLog('health_check', 'Health check completo', results);
