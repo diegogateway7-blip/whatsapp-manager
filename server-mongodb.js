@@ -78,6 +78,8 @@ app.get('/api/apps', async (req, res) => {
         appName: app.appName,
         token: app.token,
         phoneNumberId: app.phoneNumberId,
+        testPhoneNumber: app.testPhoneNumber || null,
+        lastMessageWindowRenewal: app.lastMessageWindowRenewal || null,
         numbers: Object.fromEntries(app.numbers),
         createdAt: app.createdAt
       };
