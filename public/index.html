@@ -809,13 +809,14 @@
                     <small style="color: #666;">ID do número no Meta Business</small>
                 </div>
                 <div class="form-group">
-                    <label>Número de Teste (Opcional - Recomendado!) 🎯</label>
-                    <input type="text" id="testPhoneNumber" placeholder="5511999999999" autocomplete="off">
+                    <label>WABA ID (Obrigatório!) 🎯</label>
+                    <input type="text" id="wabaId" required placeholder="1089087896623422" autocomplete="off">
                     <small style="color: #666;">
-                        <strong>RECOMENDADO:</strong> Seu número pessoal para testar envio REAL de mensagens.<br>
-                        1. Envie uma mensagem do seu número para o WhatsApp do app<br>
-                        2. Cole seu número aqui (com DDI, sem +)<br>
-                        3. Sistema testará enviando mensagem de verdade (100% confiável!)
+                        <strong>OBRIGATÓRIO:</strong> ID da WhatsApp Business Account<br>
+                        1. Acesse Meta Business Manager → WhatsApp → Configurações<br>
+                        2. Copie o "Identificação da conta do WhatsApp Business"<br>
+                        3. Cole aqui (somente números)<br>
+                        <strong>Por quê?</strong> Verifica se conta está restrita/banida ANTES de tentar enviar mensagens!
                     </small>
                 </div>
                 <div class="form-actions">
@@ -1134,7 +1135,7 @@
             document.getElementById('appName').value = '';
             document.getElementById('token').value = '';
             document.getElementById('phoneNumberId').value = '';
-            document.getElementById('testPhoneNumber').value = '';
+            document.getElementById('wabaId').value = '';
             currentAppId = null;
             document.getElementById('appModal').classList.add('active');
         }
@@ -1147,7 +1148,7 @@
             document.getElementById('appName').value = app.appName;
             document.getElementById('token').value = app.token;
             document.getElementById('phoneNumberId').value = app.phoneNumberId;
-            document.getElementById('testPhoneNumber').value = app.testPhoneNumber || '';
+            document.getElementById('wabaId').value = app.wabaId || '';
             currentAppId = appId;
             document.getElementById('appModal').classList.add('active');
         }
@@ -1195,13 +1196,18 @@
             const appName = document.getElementById('appName').value.trim();
             const token = document.getElementById('token').value.trim();
             const phoneNumberId = document.getElementById('phoneNumberId').value.trim();
-            const testPhoneNumber = document.getElementById('testPhoneNumber').value.trim();
+            const wabaId = document.getElementById('wabaId').value.trim();
+
+            if (!wabaId) {
+                showMessage('WABA ID é obrigatório!', 'error');
+                return;
+            }
 
             try {
                 const response = await fetch(`${API_URL}/api/apps`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ appId, appName, token, phoneNumberId, testPhoneNumber: testPhoneNumber || null })
+                    body: JSON.stringify({ appId, appName, token, phoneNumberId, wabaId })
                 });
 
                 if (response.ok) {

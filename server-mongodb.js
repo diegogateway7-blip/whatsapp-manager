@@ -78,8 +78,7 @@ app.get('/api/apps', async (req, res) => {
         appName: app.appName,
         token: app.token,
         phoneNumberId: app.phoneNumberId,
-        testPhoneNumber: app.testPhoneNumber || null,
-        lastMessageWindowRenewal: app.lastMessageWindowRenewal || null,
+        wabaId: app.wabaId,
         numbers: Object.fromEntries(app.numbers),
         createdAt: app.createdAt
       };
@@ -92,10 +91,10 @@ app.get('/api/apps', async (req, res) => {
 
 // Adicionar ou atualizar app
 app.post('/api/apps', async (req, res) => {
-  const { appId, appName, token, phoneNumberId, testPhoneNumber } = req.body;
+  const { appId, appName, token, phoneNumberId, wabaId } = req.body;
   
-  if (!appId || !appName || !token || !phoneNumberId) {
-    return res.status(400).json({ error: 'Dados incompletos' });
+  if (!appId || !appName || !token || !phoneNumberId || !wabaId) {
+    return res.status(400).json({ error: 'Todos os campos são obrigatórios (appId, appName, token, phoneNumberId, wabaId)' });
   }
 
   try {
@@ -107,27 +106,18 @@ app.post('/api/apps', async (req, res) => {
         appName,
         token,
         phoneNumberId,
-        testPhoneNumber: testPhoneNumber || null,
-        lastMessageWindowRenewal: testPhoneNumber ? new Date() : null,
+        wabaId,
         numbers: new Map()
       });
-      await addLog('app', `App criado: ${appName}`, { appId, hasTestNumber: !!testPhoneNumber });
+      await addLog('app', `App criado: ${appName}`, { appId, wabaId });
     } else {
       app.appName = appName;
       app.token = token;
       app.phoneNumberId = phoneNumberId;
+      app.wabaId = wabaId;
       app.updatedAt = new Date();
       
-      // Atualizar testPhoneNumber SEMPRE que vier no request (mesmo que seja null)
-      if (testPhoneNumber !== undefined) {
-        // Se mudou o número de teste e não é vazio, atualiza a janela
-        if (testPhoneNumber && testPhoneNumber !== app.testPhoneNumber) {
-          app.lastMessageWindowRenewal = new Date();
-        }
-        app.testPhoneNumber = testPhoneNumber || null;
-      }
-      
-      await addLog('app', `App atualizado: ${appName}`, { appId, testPhoneNumber: testPhoneNumber || 'não alterado' });
+      await addLog('app', `App atualizado: ${appName}`, { appId, wabaId });
     }
     
     await app.save();
@@ -373,6 +363,120 @@ app.delete('/api/logs', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// ===== HEALTH CHECK POR WABA =====
+
+// Função para verificar status da WABA (WhatsApp Business Account)
+async function checkWABAStatus(token, wabaId) {
+  try {
+    console.log(`    🏢 Verificando WABA: ${wabaId}`);
+    
+    const response = await axios.get(
+      `https://graph.facebook.com/${CONFIG.META_API_VERSION}/${wabaId}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        params: {
+          fields: 'id,name,account_review_status,messaging_limit_tier,business_verification_status'
+        },
+        timeout: 15000
+      }
+    );
+
+    const data = response.data;
+    
+    console.log(`    📊 WABA: ${data.name || 'N/A'}`);
+    console.log(`    📋 Status: ${data.account_review_status || 'N/A'}`);
+    console.log(`    📊 Tier: ${data.messaging_limit_tier || 'N/A'}`);
+    console.log(`    ✓ Verificação: ${data.business_verification_status || 'N/A'}`);
+
+    // ===== VERIFICAÇÃO 1: Account Review Status =====
+    if (data.account_review_status === 'REJECTED') {
+      return {
+        active: false,
+        error: 'WABA REJEITADA pelo WhatsApp. Conta não pode enviar mensagens.',
+        errorCode: 'WABA_REJECTED',
+        wabaStatus: data
+      };
+    }
+
+    if (data.account_review_status === 'RESTRICTED') {
+      return {
+        active: false,
+        error: 'WABA RESTRITA pelo WhatsApp. Conta com limitações para enviar mensagens.',
+        errorCode: 'WABA_RESTRICTED',
+        wabaStatus: data
+      };
+    }
+
+    if (data.account_review_status === 'PENDING') {
+      return {
+        active: false,
+        error: 'WABA aguardando aprovação. Ainda não pode enviar mensagens.',
+        errorCode: 'WABA_PENDING',
+        wabaStatus: data
+      };
+    }
+
+    // ===== VERIFICAÇÃO 2: Messaging Limit Tier =====
+    if (data.messaging_limit_tier === 'TIER_0' || !data.messaging_limit_tier) {
+      return {
+        active: false,
+        error: 'WABA sem permissão para enviar mensagens (TIER_0).',
+        errorCode: 'WABA_NO_MESSAGING',
+        wabaStatus: data
+      };
+    }
+
+    // ✅ WABA APROVADA E FUNCIONANDO!
+    console.log(`    ✅ WABA APROVADA! Status: ${data.account_review_status} | Tier: ${data.messaging_limit_tier}`);
+
+    return {
+      active: true,
+      error: null,
+      errorCode: null,
+      wabaStatus: {
+        name: data.name,
+        account_review_status: data.account_review_status,
+        messaging_limit_tier: data.messaging_limit_tier,
+        business_verification_status: data.business_verification_status
+      }
+    };
+
+  } catch (error) {
+    console.log(`    ❌ ERRO ao verificar WABA:`, error.message);
+
+    let errorMessage = 'Erro ao verificar WABA';
+    let errorCode = null;
+
+    if (error.response) {
+      errorCode = error.response.data?.error?.code || error.response.status;
+      errorMessage = error.response.data?.error?.message || `HTTP ${error.response.status}`;
+      
+      console.log(`    ❌ Código do erro: ${errorCode}`);
+      console.log(`    ❌ Mensagem: ${errorMessage}`);
+      
+      // Erros comuns
+      if (errorCode === 100) {
+        errorMessage = 'WABA ID inválido. Verifique se o ID está correto.';
+      } else if (errorCode === 190) {
+        errorMessage = 'Token inválido ou expirado. Gere um novo token.';
+      } else if (errorCode === 200 || errorCode === 10) {
+        errorMessage = 'Token sem permissões para acessar WABA. Adicione permissão: whatsapp_business_management';
+      }
+    } else if (error.code === 'ECONNABORTED') {
+      errorMessage = 'Timeout na requisição para WABA';
+    }
+
+    return {
+      active: false,
+      error: errorMessage,
+      errorCode,
+      wabaStatus: null
+    };
+  }
+}
 
 // ===== HEALTH CHECK INTELIGENTE =====
 
@@ -648,25 +752,8 @@ async function performHealthCheck() {
     for (const app of apps) {
       console.log(`\n📱 Verificando ${app.appName} (${app.appId})...`);
 
-      // Escolher método de verificação
-      let result;
-      if (app.testPhoneNumber) {
-        console.log(`    💡 Usando TESTE REAL por envio de mensagem`);
-        result = await checkWhatsAppNumberByMessageSend(app.token, app.phoneNumberId, app.testPhoneNumber);
-        
-        // Verificar se janela de 24h está próxima de expirar
-        if (app.lastMessageWindowRenewal) {
-          const hoursSinceRenewal = (new Date() - new Date(app.lastMessageWindowRenewal)) / (1000 * 60 * 60);
-          if (hoursSinceRenewal > 23) {
-            console.log(`    ⚠️  ATENÇÃO: Janela de 24h vai expirar em breve! Renove enviando mensagem do ${app.testPhoneNumber}`);
-          } else {
-            console.log(`    ⏰ Janela válida por mais ${Math.floor(24 - hoursSinceRenewal)}h`);
-          }
-        }
-      } else {
-        console.log(`    💡 Usando verificação por API (configure testPhoneNumber para teste real)`);
-        result = await checkWhatsAppNumber(app.token, app.phoneNumberId);
-      }
+      // Verificar WABA Status (método ÚNICO e definitivo)
+      const result = await checkWABAStatus(app.token, app.wabaId);
       
       // Atualizar status de todos os números deste app
       for (const [number, numberData] of app.numbers) {
@@ -696,21 +783,17 @@ async function performHealthCheck() {
           numberData.error = null;
           numberData.errorCode = null;
           numberData.failedChecks = 0;
-          numberData.qualityRating = result.qualityRating;
-          numberData.displayPhoneNumber = result.displayPhoneNumber;
-          numberData.verifiedName = result.verifiedName;
-          numberData.codeVerificationStatus = result.codeVerificationStatus;
+          numberData.qualityRating = `WABA: ${result.wabaStatus?.account_review_status || 'OK'}`;
           results.active++;
 
-          console.log(`  ✅ ${number} - Ativo | Quality: ${result.qualityRating} | Display: ${result.displayPhoneNumber || 'N/A'} | Verified: ${result.verifiedName ? 'Sim' : 'Não'}`);
+          console.log(`  ✅ ${number} - Ativo | WABA Status: ${result.wabaStatus?.account_review_status} | Tier: ${result.wabaStatus?.messaging_limit_tier}`);
         } else {
-          // Número com erro
+          // Número com erro (WABA com problema)
           numberData.error = result.error;
           numberData.errorCode = result.errorCode;
           numberData.failedChecks++;
 
-          const analysis = result.analysis;
-          console.log(`  ❌ ${number} - Erro: ${result.error} (Tentativa ${numberData.failedChecks}/${CONFIG.MAX_FAILED_CHECKS})`);
+          console.log(`  ❌ ${number} - Erro WABA: ${result.error} (Tentativa ${numberData.failedChecks}/${CONFIG.MAX_FAILED_CHECKS})`);
 
           // ===== LÓGICA DE QUARENTENA CORRIGIDA =====
           // QUALQUER erro desativa o número imediatamente
@@ -726,12 +809,12 @@ async function performHealthCheck() {
           
           if (numberData.failedChecks >= CONFIG.MAX_FAILED_CHECKS) {
             // 3ª FALHA: DESATIVADO PERMANENTEMENTE (não remove!)
-            await addLog('ban', `Número DESATIVADO após 3 falhas: ${number}`, { 
+            await addLog('ban', `Número DESATIVADO após 3 falhas (WABA com problema): ${number}`, { 
               appId: app.appId,
               reason: result.error,
               errorCode: result.errorCode,
               failedChecks: numberData.failedChecks,
-              severity: analysis.severity || 'high'
+              wabaStatus: result.wabaStatus
             });
 
             await sendNotification(
