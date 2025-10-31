@@ -93,8 +93,9 @@ app.get('/api/apps', async (req, res) => {
 app.post('/api/apps', async (req, res) => {
   const { appId, appName, token, phoneNumberId, wabaId } = req.body;
   
-  if (!appId || !appName || !token || !phoneNumberId || !wabaId) {
-    return res.status(400).json({ error: 'Todos os campos são obrigatórios (appId, appName, token, phoneNumberId, wabaId)' });
+  // WABA ID é obrigatório! phoneNumberId é opcional (não mais usado)
+  if (!appId || !appName || !token || !wabaId) {
+    return res.status(400).json({ error: 'Campos obrigatórios: appId, appName, token, wabaId' });
   }
 
   try {
@@ -105,7 +106,7 @@ app.post('/api/apps', async (req, res) => {
         appId,
         appName,
         token,
-        phoneNumberId,
+        phoneNumberId: phoneNumberId || null, // Opcional
         wabaId,
         numbers: new Map()
       });
@@ -113,7 +114,7 @@ app.post('/api/apps', async (req, res) => {
     } else {
       app.appName = appName;
       app.token = token;
-      app.phoneNumberId = phoneNumberId;
+      app.phoneNumberId = phoneNumberId || null; // Opcional
       app.wabaId = wabaId;
       app.updatedAt = new Date();
       

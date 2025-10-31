@@ -16,7 +16,7 @@ const appSchema = new mongoose.Schema({
   appId: { type: String, required: true, unique: true },
   appName: { type: String, required: true },
   token: { type: String, required: true },
-  phoneNumberId: { type: String, required: true },
+  phoneNumberId: { type: String, required: false }, // OPCIONAL - não mais usado (verificação via WABA ID)
   wabaId: { type: String, required: true }, // WABA ID - OBRIGATÓRIO para verificar restrições
   numbers: { type: Map, of: numberSchema },
   createdAt: { type: Date, default: Date.now },

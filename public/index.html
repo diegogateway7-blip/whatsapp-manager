@@ -804,11 +804,6 @@
                     <small style="color: #666;">Token de acesso permanente do Meta Business</small>
                 </div>
                 <div class="form-group">
-                    <label>Phone Number ID *</label>
-                    <input type="text" id="phoneNumberId" required placeholder="123456789" autocomplete="off">
-                    <small style="color: #666;">ID do número no Meta Business</small>
-                </div>
-                <div class="form-group">
                     <label>WABA ID (Obrigatório!) 🎯</label>
                     <input type="text" id="wabaId" required placeholder="1089087896623422" autocomplete="off">
                     <small style="color: #666;">
@@ -1134,7 +1129,6 @@
             document.getElementById('appId').disabled = false;
             document.getElementById('appName').value = '';
             document.getElementById('token').value = '';
-            document.getElementById('phoneNumberId').value = '';
             document.getElementById('wabaId').value = '';
             currentAppId = null;
             document.getElementById('appModal').classList.add('active');
@@ -1147,7 +1141,6 @@
             document.getElementById('appId').disabled = true;
             document.getElementById('appName').value = app.appName;
             document.getElementById('token').value = app.token;
-            document.getElementById('phoneNumberId').value = app.phoneNumberId;
             document.getElementById('wabaId').value = app.wabaId || '';
             currentAppId = appId;
             document.getElementById('appModal').classList.add('active');
@@ -1195,7 +1188,6 @@
             const appId = document.getElementById('appId').value.trim();
             const appName = document.getElementById('appName').value.trim();
             const token = document.getElementById('token').value.trim();
-            const phoneNumberId = document.getElementById('phoneNumberId').value.trim();
             const wabaId = document.getElementById('wabaId').value.trim();
 
             if (!wabaId) {
@@ -1207,7 +1199,7 @@
                 const response = await fetch(`${API_URL}/api/apps`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ appId, appName, token, phoneNumberId, wabaId })
+                    body: JSON.stringify({ appId, appName, token, wabaId })
                 });
 
                 if (response.ok) {
