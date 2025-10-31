@@ -92,7 +92,7 @@ app.get('/api/apps', async (req, res) => {
 
 // Adicionar ou atualizar app
 app.post('/api/apps', async (req, res) => {
-  const { appId, appName, token, phoneNumberId } = req.body;
+  const { appId, appName, token, phoneNumberId, testPhoneNumber } = req.body;
   
   if (!appId || !appName || !token || !phoneNumberId) {
     return res.status(400).json({ error: 'Dados incompletos' });
@@ -104,18 +104,30 @@ app.post('/api/apps', async (req, res) => {
     if (!app) {
       app = new App({
         appId,
-      appName,
-      token,
-      phoneNumberId,
+        appName,
+        token,
+        phoneNumberId,
+        testPhoneNumber: testPhoneNumber || null,
+        lastMessageWindowRenewal: testPhoneNumber ? new Date() : null,
         numbers: new Map()
       });
-      await addLog('app', `App criado: ${appName}`, { appId });
-  } else {
+      await addLog('app', `App criado: ${appName}`, { appId, hasTestNumber: !!testPhoneNumber });
+    } else {
       app.appName = appName;
       app.token = token;
       app.phoneNumberId = phoneNumberId;
       app.updatedAt = new Date();
-      await addLog('app', `App atualizado: ${appName}`, { appId });
+      
+      // Atualizar testPhoneNumber SEMPRE que vier no request (mesmo que seja null)
+      if (testPhoneNumber !== undefined) {
+        // Se mudou o número de teste e não é vazio, atualiza a janela
+        if (testPhoneNumber && testPhoneNumber !== app.testPhoneNumber) {
+          app.lastMessageWindowRenewal = new Date();
+        }
+        app.testPhoneNumber = testPhoneNumber || null;
+      }
+      
+      await addLog('app', `App atualizado: ${appName}`, { appId, testPhoneNumber: testPhoneNumber || 'não alterado' });
     }
     
     await app.save();

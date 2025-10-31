@@ -206,3 +206,4 @@ Write-Host "`nTodos configurados! Agora abra as janelas de 24h." -ForegroundColo
 
 **Depois de seguir todos os passos, o sistema vai detectar 100% das restrições! 🎯**
 
+

@@ -118,13 +118,16 @@ app.post('/api/apps', async (req, res) => {
       app.phoneNumberId = phoneNumberId;
       app.updatedAt = new Date();
       
-      // Se atualizou o número de teste, atualiza a janela
-      if (testPhoneNumber && testPhoneNumber !== app.testPhoneNumber) {
-        app.lastMessageWindowRenewal = new Date();
+      // Atualizar testPhoneNumber SEMPRE que vier no request (mesmo que seja null)
+      if (testPhoneNumber !== undefined) {
+        // Se mudou o número de teste e não é vazio, atualiza a janela
+        if (testPhoneNumber && testPhoneNumber !== app.testPhoneNumber) {
+          app.lastMessageWindowRenewal = new Date();
+        }
+        app.testPhoneNumber = testPhoneNumber || null;
       }
-      app.testPhoneNumber = testPhoneNumber || app.testPhoneNumber;
       
-      await addLog('app', `App atualizado: ${appName}`, { appId });
+      await addLog('app', `App atualizado: ${appName}`, { appId, testPhoneNumber: testPhoneNumber || 'não alterado' });
     }
     
     await app.save();
