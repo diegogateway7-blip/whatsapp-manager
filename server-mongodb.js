@@ -452,19 +452,20 @@ async function checkWABAStatus(token, wabaId) {
     let errorCode = null;
 
     if (error.response) {
+      const apiErrorMessage = error.response.data?.error?.message || `HTTP ${error.response.status}`;
       errorCode = error.response.data?.error?.code || error.response.status;
-      errorMessage = error.response.data?.error?.message || `HTTP ${error.response.status}`;
+      errorMessage = apiErrorMessage;
       
       console.log(`    ❌ Código do erro: ${errorCode}`);
       console.log(`    ❌ Mensagem: ${errorMessage}`);
       
       // Erros comuns
       if (errorCode === 100) {
-        errorMessage = 'WABA ID inválido. Verifique se o ID está correto.';
+        errorMessage = `Erro #100 - ${apiErrorMessage}. Verifique se o WABA ID está correto e se o token possui acesso (permissão whatsapp_business_management) à conta ${wabaId}.`;
       } else if (errorCode === 190) {
-        errorMessage = 'Token inválido ou expirado. Gere um novo token.';
+        errorMessage = `Erro #190 - Token inválido ou expirado. Gere um novo token. Detalhe: ${apiErrorMessage}`;
       } else if (errorCode === 200 || errorCode === 10) {
-        errorMessage = 'Token sem permissões para acessar WABA. Adicione permissão: whatsapp_business_management';
+        errorMessage = `Erro #${errorCode} - Token sem permissões para acessar a WABA. Adicione a permissão whatsapp_business_management. Detalhe: ${apiErrorMessage}`;
       }
     } else if (error.code === 'ECONNABORTED') {
       errorMessage = 'Timeout na requisição para WABA';
