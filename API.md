@@ -77,6 +77,7 @@ GET /api/apps
     "appName": "App Principal",
     "token": "EAAxxxxx...",
     "phoneNumberId": "123456789",
+    "wabaId": "357215632625206",
     "numbers": {
       "5511999999999": {
         "active": true,
@@ -105,6 +106,7 @@ Content-Type: application/json
   "appId": "app_1",
   "appName": "App Principal",
   "token": "EAAxxxxx...",
+  "wabaId": "357215632625206",
   "phoneNumberId": "123456789"
 }
 ```
@@ -126,7 +128,7 @@ Content-Type: application/json
 **Response (Erro - 400)**:
 ```json
 {
-  "error": "Dados incompletos"
+  "error": "Campos obrigatórios: appId, appName, token, wabaId"
 }
 ```
 

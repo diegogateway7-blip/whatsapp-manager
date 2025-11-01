@@ -6,14 +6,13 @@ Sistema inteligente de gerenciamento de números WhatsApp Business com detecçã
 
 ### ✅ Recursos Principais
 
-- **Health Check Automático**: Verificação periódica de todos os números (configurável)
-- **Detecção Inteligente de Banimentos**: Analisa códigos de erro da API do Meta para identificar problemas
-- **Sistema de Quarentena**: Números com erro vão para quarentena antes da remoção definitiva
-- **Remoção Automática**: Após X falhas consecutivas, remove automaticamente o número
-- **Persistência em Disco**: Dados salvos em arquivo JSON (compatível com Render.com)
-- **Backup Automático**: Backup periódico dos dados
+- **Health Check Automático**: Verificação periódica de todas as WABAs registradas (configurável)
+- **Detecção Inteligente de Restrições**: Analisa o `account_review_status` e o `messaging_limit_tier` da conta no Meta
+- **Sistema de Quarentena**: Números são desativados ao primeiro erro e só voltam quando a WABA estiver saudável
+- **Desativação Segura**: Após 3 falhas consecutivas, o número permanece desativado até ação manual do operador
+- **Persistência em MongoDB Atlas**: Banco de dados gerenciado, compatível com Render.com
 - **Logs Detalhados**: Histórico completo de todas as operações
-- **Webhooks**: Notificações em tempo real via webhook (Discord, Slack, Make, N8N, etc)
+- **Webhooks**: Notificações em tempo real (Discord, Slack, Make, N8N, etc)
 - **Dashboard Moderno**: Interface web completa e responsiva
 - **API para Integração**: Endpoints REST para integrar com Typebot e outros sistemas
 
@@ -23,7 +22,7 @@ O sistema implementa um processo inteligente de 3 etapas:
 
 1. **1ª Falha**: Número vai para quarentena (continua na lista, mas marcado)
 2. **2ª Falha**: Número ainda em quarentena (última chance)
-3. **3ª Falha**: Número é **removido automaticamente** da lista
+3. **3ª Falha**: Número é **desativado permanentemente**. O operador decide reativar ou excluir após revisar a conta
 
 Erros temporários (timeout, rate limit) não contam como falha para manter números válidos ativos.
 
@@ -137,7 +136,8 @@ const CONFIG = {
    - **App ID**: Identificador único (ex: `app_1`)
    - **Nome**: Nome descritivo
    - **Token**: Token permanente do Meta Business
-   - **Phone Number ID**: ID do número no Meta
+   - **WABA ID**: Identificação da WhatsApp Business Account (obrigatório)
+   - *(Opcional)* **Phone Number ID**: Apenas para referência; o health check não depende mais dele
 
 ### 2. Adicionar Números
 
@@ -197,7 +197,7 @@ GET /api/apps
 
 # Adicionar/Editar app
 POST /api/apps
-Body: { appId, appName, token, phoneNumberId }
+Body: { appId, appName, token, wabaId, phoneNumberId (opcional) }
 
 # Deletar app
 DELETE /api/apps/:appId
@@ -233,8 +233,8 @@ Configure a variável `WEBHOOK_URL` para receber notificações em tempo real:
 **Formato da notificação**:
 ```json
 {
-  "title": "🚫 Número Banido/Removido",
-  "message": "O número 5511999999999 foi removido automaticamente após 3 falhas.",
+  "title": "🚫 Número Desativado",
+  "message": "O número 5511999999999 foi desativado após 3 falhas consecutivas (WABA com problema).",
   "data": {
     "appId": "app_1",
     "appName": "App Principal",
@@ -273,35 +273,28 @@ WEBHOOK_URL=https://seu-n8n.com/webhook/whatsapp-alerts
 
 ## 📊 Estrutura de Dados
 
-### Database (data/database.json)
+### Estrutura (MongoDB - coleção `apps`)
 ```json
 {
-  "apps": {
-    "app_1": {
-      "appName": "App Principal",
-      "token": "EAAxxxxx",
-      "phoneNumberId": "123456",
-      "numbers": {
-        "5511999999999": {
-          "active": true,
-          "lastCheck": "2025-10-26T12:00:00Z",
-          "error": null,
-          "errorCode": null,
-          "failedChecks": 0,
-          "addedAt": "2025-10-25T10:00:00Z",
-          "lastStatusChange": "2025-10-25T10:00:00Z",
-          "qualityRating": "GREEN"
-        }
-      },
-      "createdAt": "2025-10-25T10:00:00Z"
+  "appId": "app_1",
+  "appName": "App Principal",
+  "token": "EAAxxxxx",
+  "wabaId": "357215632625206",
+  "phoneNumberId": "123456", // opcional
+  "numbers": {
+    "5511999999999": {
+      "active": true,
+      "lastCheck": "2025-10-26T12:00:00Z",
+      "error": null,
+      "errorCode": null,
+      "failedChecks": 0,
+      "addedAt": "2025-10-25T10:00:00Z",
+      "lastStatusChange": "2025-10-25T10:00:00Z",
+      "qualityRating": "WABA: APPROVED"
     }
   },
-  "lastHealthCheck": "2025-10-26T12:00:00Z",
-  "stats": {
-    "totalChecks": 100,
-    "totalBans": 5,
-    "totalRecoveries": 2
-  }
+  "createdAt": "2025-10-25T10:00:00Z",
+  "updatedAt": "2025-10-26T12:00:00Z"
 }
 ```
 

@@ -869,7 +869,13 @@ async function performHealthCheck() {
           // Número com erro (WABA com problema)
           numberData.error = result.error;
           numberData.errorCode = result.errorCode;
-          numberData.failedChecks++;
+
+          const previousFailedChecks = numberData.failedChecks || 0;
+          const nextFailedChecks = Math.min(previousFailedChecks + 1, CONFIG.MAX_FAILED_CHECKS);
+          const reachedLimit = nextFailedChecks === CONFIG.MAX_FAILED_CHECKS;
+          const hitLimitNow = reachedLimit && previousFailedChecks < CONFIG.MAX_FAILED_CHECKS;
+
+          numberData.failedChecks = nextFailedChecks;
 
           console.log(`  ❌ ${number} - Erro WABA: ${result.error} (Tentativa ${numberData.failedChecks}/${CONFIG.MAX_FAILED_CHECKS})`);
 
@@ -885,38 +891,42 @@ async function performHealthCheck() {
           // Salvar as mudanças no Map
           app.numbers.set(number, numberData);
           
-          if (numberData.failedChecks >= CONFIG.MAX_FAILED_CHECKS) {
-            // 3ª FALHA: DESATIVADO PERMANENTEMENTE (não remove!)
-            await addLog('ban', `Número DESATIVADO após 3 falhas (WABA com problema): ${number}`, { 
-              appId: app.appId,
-              reason: result.error,
-              errorCode: result.errorCode,
-              failedChecks: numberData.failedChecks,
-              wabaStatus: result.wabaStatus
-            });
+          if (reachedLimit) {
+            results.disabled++;
 
-            await sendNotification(
-              '🚫 Número Desativado Permanentemente',
-              `O número ${number} foi DESATIVADO após ${numberData.failedChecks} falhas consecutivas (WABA com problema). AÇÃO NECESSÁRIA: Verificar manualmente e decidir se reativa ou exclui.`,
-              { 
-                appId: app.appId, 
-                appName: app.appName, 
-                number,
+            if (hitLimitNow) {
+              // 3ª FALHA: DESATIVADO PERMANENTEMENTE (não remove!)
+              await addLog('ban', `Número DESATIVADO após 3 falhas (WABA com problema): ${number}`, { 
+                appId: app.appId,
                 reason: result.error,
                 errorCode: result.errorCode,
-                action: 'VERIFICAÇÃO MANUAL NECESSÁRIA'
-              }
-            );
+                failedChecks: numberData.failedChecks,
+                wabaStatus: result.wabaStatus
+              });
 
-            stats.totalBans++;
-            results.disabled++;
-            console.log(`    🚫 DESATIVADO PERMANENTEMENTE (${numberData.failedChecks} falhas) - Verificação manual necessária`);
+              await sendNotification(
+                '🚫 Número Desativado Permanentemente',
+                `O número ${number} foi DESATIVADO após ${numberData.failedChecks} falhas consecutivas (WABA com problema). AÇÃO NECESSÁRIA: Verificar manualmente e decidir se reativa ou exclui.`,
+                { 
+                  appId: app.appId, 
+                  appName: app.appName, 
+                  number,
+                  reason: result.error,
+                  errorCode: result.errorCode,
+                  action: 'VERIFICAÇÃO MANUAL NECESSÁRIA'
+                }
+              );
+
+              stats.totalBans++;
+              console.log(`    🚫 DESATIVADO PERMANENTEMENTE (${numberData.failedChecks} falhas) - Verificação manual necessária`);
+            } else {
+              console.log('    🔁 Número permanece desativado permanentemente (aguardando ação manual).');
+            }
             
           } else {
             // 1ª ou 2ª FALHA: DESATIVAR e colocar em QUARENTENA
             results.disabled++;
 
-            // Log e notificação apenas na primeira falha
             if (numberData.failedChecks === 1) {
               await addLog('quarantine', `Número em QUARENTENA (1ª falha - WABA com problema): ${number}`, { 
                 appId: app.appId,
@@ -933,7 +943,8 @@ async function performHealthCheck() {
                   appName: app.appName, 
                   number,
                   reason: result.error,
-                  errorCode: result.errorCode
+                  errorCode: result.errorCode,
+                  wabaStatus: result.wabaStatus
                 }
               );
             }
