@@ -12,12 +12,11 @@ services:
         value: production
       - key: PORT
         value: 3000
+      - key: MONGODB_URI
+        sync: false
+        # OBRIGATÓRIO: Configure no Render Dashboard com sua connection string do MongoDB Atlas
+        # Formato: mongodb+srv://usuario:senha@cluster.mongodb.net/whatsapp-manager
       - key: WEBHOOK_URL
         sync: false
-        # Configure this in Render dashboard with your webhook URL for notifications
-    # Persistent disk for database and logs
-    disk:
-      name: data
-      mountPath: /opt/render/project/src/data
-      sizeGB: 1
+        # OPCIONAL: Configure com sua URL de webhook para notificações (Discord, Slack, Make, N8N, etc)
 

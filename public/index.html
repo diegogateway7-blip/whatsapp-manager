@@ -723,6 +723,10 @@
                     <span>🧪</span>
                     <span>Testar API</span>
                 </button>
+                <button class="warning" onclick="openTestWabaModal()">
+                    <span>🔍</span>
+                    <span>Testar WABA</span>
+                </button>
             </div>
         </header>
 
@@ -865,6 +869,39 @@
                     <span>Fechar</span>
                 </button>
             </div>
+        </div>
+    </div>
+
+    <!-- Modal: Test WABA -->
+    <div class="modal" id="testWabaModal">
+        <div class="modal-content">
+            <div class="modal-header">🧪 Testar Token e WABA ID</div>
+            <p style="color: #666; margin-bottom: 20px;">
+                Use esta ferramenta para diagnosticar problemas de acesso ao WABA ID.
+            </p>
+            <form onsubmit="testWabaAccess(event)">
+                <div class="form-group">
+                    <label>Token *</label>
+                    <textarea id="testToken" required placeholder="EAAxxxxx..." rows="3"></textarea>
+                    <small style="color: #666;">Cole o token completo (começa com EAA...)</small>
+                </div>
+                <div class="form-group">
+                    <label>WABA ID *</label>
+                    <input type="text" id="testWabaId" required placeholder="1089087896623422" autocomplete="off">
+                    <small style="color: #666;">ID da WhatsApp Business Account (só números)</small>
+                </div>
+                <div id="testResult" style="display: none; margin-top: 20px;"></div>
+                <div class="form-actions">
+                    <button type="submit" id="testWabaBtn">
+                        <span>🧪</span>
+                        <span>Testar Conexão</span>
+                    </button>
+                    <button type="button" onclick="closeModal('testWabaModal')">
+                        <span>❌</span>
+                        <span>Fechar</span>
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -1341,6 +1378,90 @@
                 }
             } catch (error) {
                 showNotification('Erro ao testar API', 'error');
+            }
+        }
+
+        function openTestWabaModal() {
+            document.getElementById('testToken').value = '';
+            document.getElementById('testWabaId').value = '';
+            document.getElementById('testResult').style.display = 'none';
+            document.getElementById('testWabaModal').classList.add('active');
+        }
+
+        async function testWabaAccess(e) {
+            e.preventDefault();
+            
+            const token = document.getElementById('testToken').value.trim();
+            const wabaId = document.getElementById('testWabaId').value.trim();
+            const btn = document.getElementById('testWabaBtn');
+            const resultDiv = document.getElementById('testResult');
+            
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading"></span><span>Testando...</span>';
+            resultDiv.style.display = 'none';
+            
+            try {
+                const response = await fetch(`${API_URL}/api/test-waba`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token, wabaId })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Sucesso!
+                    resultDiv.innerHTML = `
+                        <div style="background: #c6f6d5; border: 2px solid #48bb78; border-radius: 12px; padding: 20px;">
+                            <h3 style="color: #22543d; margin-bottom: 15px;">✅ ${data.message}</h3>
+                            <div style="background: white; padding: 15px; border-radius: 8px; margin-top: 10px;">
+                                <p style="margin: 5px 0;"><strong>Nome:</strong> ${data.waba.name || 'N/A'}</p>
+                                <p style="margin: 5px 0;"><strong>WABA ID:</strong> ${data.waba.id}</p>
+                                <p style="margin: 5px 0;"><strong>Status:</strong> ${data.waba.account_review_status || 'N/A'}</p>
+                                <p style="margin: 5px 0;"><strong>Tier:</strong> ${data.waba.messaging_limit_tier || 'N/A'}</p>
+                                <p style="margin: 5px 0;"><strong>Verificação:</strong> ${data.waba.business_verification_status || 'N/A'}</p>
+                            </div>
+                            <p style="margin-top: 15px; font-weight: 600; color: #2d3748;">${data.recommendation}</p>
+                        </div>
+                    `;
+                    resultDiv.style.display = 'block';
+                    showNotification('Token e WABA ID estão corretos!', 'success');
+                } else {
+                    // Erro!
+                    let recommendationsHtml = '';
+                    if (data.recommendations && data.recommendations.length > 0) {
+                        recommendationsHtml = `
+                            <div style="margin-top: 15px; background: white; padding: 15px; border-radius: 8px;">
+                                <strong style="color: #2d3748;">📋 Recomendações:</strong>
+                                <ul style="margin: 10px 0 0 20px; color: #4a5568;">
+                                    ${data.recommendations.map(r => `<li style="margin: 5px 0;">${r}</li>`).join('')}
+                                </ul>
+                            </div>
+                        `;
+                    }
+                    
+                    resultDiv.innerHTML = `
+                        <div style="background: #fed7d7; border: 2px solid #f56565; border-radius: 12px; padding: 20px;">
+                            <h3 style="color: #742a2a; margin-bottom: 10px;">❌ ${data.error}</h3>
+                            <p style="color: #742a2a; margin: 10px 0;">${data.details}</p>
+                            ${recommendationsHtml}
+                        </div>
+                    `;
+                    resultDiv.style.display = 'block';
+                    showNotification('Erro ao testar WABA. Veja os detalhes no modal.', 'error');
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div style="background: #fed7d7; border: 2px solid #f56565; border-radius: 12px; padding: 20px;">
+                        <h3 style="color: #742a2a;">❌ Erro de Conexão</h3>
+                        <p style="color: #742a2a; margin-top: 10px;">Não foi possível conectar ao servidor.</p>
+                    </div>
+                `;
+                resultDiv.style.display = 'block';
+                showNotification('Erro de conexão', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<span>🧪</span><span>Testar Conexão</span>';
             }
         }
 

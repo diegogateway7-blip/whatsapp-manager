@@ -1,0 +1,50 @@
+# ===== WHATSAPP MANAGER - VARIÁVEIS DE AMBIENTE =====
+# 
+# RENOMEIE ESTE ARQUIVO PARA .env PARA USAR LOCALMENTE
+#
+
+# ===== BANCO DE DADOS (OBRIGATÓRIO) =====
+# MongoDB Atlas Connection String
+# Como obter:
+# 1. Criar conta gratuita em https://www.mongodb.com/cloud/atlas/register
+# 2. Criar cluster M0 (gratuito)
+# 3. Configurar usuário do banco
+# 4. Adicionar IP 0.0.0.0/0 ao whitelist
+# 5. Copiar connection string e substituir <password> pela senha do usuário
+MONGODB_URI=mongodb+srv://usuario:senha@cluster.mongodb.net/whatsapp-manager?retryWrites=true&w=majority
+
+# ===== SERVIDOR (OPCIONAL - Render define automaticamente) =====
+# Porta do servidor (Render sobrescreve automaticamente)
+PORT=3000
+
+# Ambiente de execução
+NODE_ENV=production
+
+# ===== NOTIFICAÇÕES (OPCIONAL) =====
+# URL do Webhook para receber notificações em tempo real
+# Suporta: Discord, Slack, Make.com, N8N, Zapier, etc
+# 
+# Exemplos:
+# Discord: https://discord.com/api/webhooks/123456/abc123
+# Slack: https://hooks.slack.com/services/T00/B00/xxx
+# Make.com: https://hook.us1.make.com/xxx
+# N8N: https://seu-n8n.com/webhook/whatsapp-alerts
+#
+# Se não configurado, sistema funciona normalmente sem notificações
+WEBHOOK_URL=
+
+# ===== NOTAS =====
+# 
+# Para desenvolvimento local:
+# 1. Renomeie este arquivo para .env
+# 2. Preencha as variáveis necessárias
+# 3. Execute: npm start
+#
+# Para produção no Render.com:
+# 1. Configure MONGODB_URI no Dashboard do Render
+# 2. PORT e NODE_ENV são definidos automaticamente
+# 3. Configure WEBHOOK_URL se desejar notificações
+#
+# ⚠️ NUNCA COMMITE O ARQUIVO .env NO GIT!
+# O arquivo .env está no .gitignore para segurança
+

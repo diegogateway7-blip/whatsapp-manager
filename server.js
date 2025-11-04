@@ -1003,6 +1003,115 @@ app.post('/api/health-check', async (req, res) => {
   }
 });
 
+// ===== ROTA DE TESTE DE WABA =====
+
+app.post('/api/test-waba', async (req, res) => {
+  const { token, wabaId } = req.body;
+  
+  if (!token || !wabaId) {
+    return res.status(400).json({ 
+      success: false,
+      error: 'Token e WABA ID são obrigatórios',
+      details: 'Forneça "token" e "wabaId" no body da requisição'
+    });
+  }
+  
+  try {
+    console.log(`🧪 TESTE: Verificando acesso ao WABA ${wabaId}...`);
+    
+    const response = await axios.get(
+      `https://graph.facebook.com/${CONFIG.META_API_VERSION}/${wabaId}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        params: {
+          fields: 'id,name,account_review_status,messaging_limit_tier,business_verification_status'
+        },
+        timeout: 15000
+      }
+    );
+    
+    const data = response.data;
+    
+    console.log(`✅ SUCESSO: Token tem acesso à WABA!`);
+    console.log(`   Nome: ${data.name || 'N/A'}`);
+    console.log(`   Status: ${data.account_review_status || 'N/A'}`);
+    console.log(`   Tier: ${data.messaging_limit_tier || 'N/A'}`);
+    
+    res.json({
+      success: true,
+      waba: {
+        id: data.id,
+        name: data.name,
+        account_review_status: data.account_review_status,
+        messaging_limit_tier: data.messaging_limit_tier,
+        business_verification_status: data.business_verification_status
+      },
+      message: '✅ Token tem acesso à WABA!',
+      recommendation: data.account_review_status === 'APPROVED' && data.messaging_limit_tier !== 'TIER_0' 
+        ? '✅ WABA está aprovada e pode enviar mensagens!' 
+        : '⚠️ WABA pode ter restrições. Verifique o status acima.'
+    });
+    
+  } catch (error) {
+    console.log(`❌ ERRO: ${error.message}`);
+    
+    let errorDetails = {
+      success: false,
+      error: 'Erro ao acessar WABA',
+      details: error.message
+    };
+    
+    if (error.response) {
+      const apiError = error.response.data?.error || {};
+      const errorCode = apiError.code || error.response.status;
+      
+      errorDetails = {
+        success: false,
+        error: `Erro #${errorCode}: ${apiError.message || 'Erro desconhecido'}`,
+        errorCode: errorCode,
+        details: '',
+        recommendations: []
+      };
+      
+      // Diagnóstico específico
+      if (errorCode === 100) {
+        errorDetails.details = 'O token NÃO TEM ACESSO ao WABA ID especificado.';
+        errorDetails.recommendations = [
+          '1. Verifique se o WABA ID está correto (copie do Meta Business Manager)',
+          '2. Verifique se o token foi gerado no App correto (que tem acesso a essa WABA)',
+          '3. Verifique se o App está conectado à WABA em "Aplicativos conectados"',
+          '4. Gere um novo token com permissões: whatsapp_business_management e whatsapp_business_messaging'
+        ];
+      } else if (errorCode === 190) {
+        errorDetails.details = 'Token inválido ou expirado.';
+        errorDetails.recommendations = [
+          '1. Gere um novo token no Meta Developers',
+          '2. Use um System User Token (permanente) ao invés de Temporary Token',
+          '3. Verifique se copiou o token completo (começa com EAA...)'
+        ];
+      } else if (errorCode === 200 || errorCode === 10) {
+        errorDetails.details = 'Token sem permissões suficientes.';
+        errorDetails.recommendations = [
+          '1. Ao gerar o token, selecione as permissões:',
+          '   - whatsapp_business_management',
+          '   - whatsapp_business_messaging',
+          '2. Use um System User Token com função de Administrador'
+        ];
+      }
+    } else if (error.code === 'ECONNABORTED') {
+      errorDetails.details = 'Timeout na requisição. API do Meta não respondeu a tempo.';
+      errorDetails.recommendations = [
+        '1. Tente novamente em alguns segundos',
+        '2. Verifique sua conexão com a internet'
+      ];
+    }
+    
+    res.status(400).json(errorDetails);
+  }
+});
+
 // ===== ROTAS DE CONFIGURAÇÃO =====
 
 app.get('/api/config', (req, res) => {
