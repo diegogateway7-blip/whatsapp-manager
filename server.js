@@ -402,7 +402,8 @@ async function checkWABAStatus(token, wabaId) {
           'Authorization': `Bearer ${token}`
         },
         params: {
-          fields: 'id,name,account_review_status,messaging_limit_tier,business_verification_status'
+          // Campos essenciais - messaging_limit_tier é opcional (nem todas contas têm)
+          fields: 'id,name,account_review_status,business_verification_status'
         },
         timeout: 15000
       }
@@ -412,7 +413,6 @@ async function checkWABAStatus(token, wabaId) {
     
     console.log(`    📊 WABA: ${data.name || 'N/A'}`);
     console.log(`    📋 Status: ${data.account_review_status || 'N/A'}`);
-    console.log(`    📊 Tier: ${data.messaging_limit_tier || 'N/A'}`);
     console.log(`    ✓ Verificação: ${data.business_verification_status || 'N/A'}`);
 
     // ===== VERIFICAÇÃO 1: Account Review Status =====
@@ -443,18 +443,10 @@ async function checkWABAStatus(token, wabaId) {
       };
     }
 
-    // ===== VERIFICAÇÃO 2: Messaging Limit Tier =====
-    if (data.messaging_limit_tier === 'TIER_0' || !data.messaging_limit_tier) {
-      return {
-        active: false,
-        error: 'WABA sem permissão para enviar mensagens (TIER_0).',
-        errorCode: 'WABA_NO_MESSAGING',
-        wabaStatus: data
-      };
-    }
-
     // ✅ WABA APROVADA E FUNCIONANDO!
-    console.log(`    ✅ WABA APROVADA! Status: ${data.account_review_status} | Tier: ${data.messaging_limit_tier}`);
+    // Nota: messaging_limit_tier foi removido pois nem todas as contas têm esse campo
+    // Se account_review_status está OK, a conta pode enviar mensagens
+    console.log(`    ✅ WABA APROVADA! Status: ${data.account_review_status}`);
 
     return {
       active: true,
@@ -463,7 +455,6 @@ async function checkWABAStatus(token, wabaId) {
       wabaStatus: {
         name: data.name,
         account_review_status: data.account_review_status,
-        messaging_limit_tier: data.messaging_limit_tier,
         business_verification_status: data.business_verification_status
       }
     };
@@ -864,7 +855,7 @@ async function performHealthCheck() {
           numberData.qualityRating = `WABA: ${result.wabaStatus?.account_review_status || 'OK'}`;
           results.active++;
 
-          console.log(`  ✅ ${number} - Ativo | WABA Status: ${result.wabaStatus?.account_review_status} | Tier: ${result.wabaStatus?.messaging_limit_tier}`);
+          console.log(`  ✅ ${number} - Ativo | WABA Status: ${result.wabaStatus?.account_review_status}`);
         } else {
           // Número com erro (WABA com problema)
           numberData.error = result.error;
@@ -1026,7 +1017,8 @@ app.post('/api/test-waba', async (req, res) => {
           'Authorization': `Bearer ${token}`
         },
         params: {
-          fields: 'id,name,account_review_status,messaging_limit_tier,business_verification_status'
+          // Campos essenciais - messaging_limit_tier é opcional
+          fields: 'id,name,account_review_status,business_verification_status'
         },
         timeout: 15000
       }
@@ -1037,7 +1029,7 @@ app.post('/api/test-waba', async (req, res) => {
     console.log(`✅ SUCESSO: Token tem acesso à WABA!`);
     console.log(`   Nome: ${data.name || 'N/A'}`);
     console.log(`   Status: ${data.account_review_status || 'N/A'}`);
-    console.log(`   Tier: ${data.messaging_limit_tier || 'N/A'}`);
+    console.log(`   Verificação: ${data.business_verification_status || 'N/A'}`);
     
     res.json({
       success: true,
@@ -1045,11 +1037,10 @@ app.post('/api/test-waba', async (req, res) => {
         id: data.id,
         name: data.name,
         account_review_status: data.account_review_status,
-        messaging_limit_tier: data.messaging_limit_tier,
         business_verification_status: data.business_verification_status
       },
       message: '✅ Token tem acesso à WABA!',
-      recommendation: data.account_review_status === 'APPROVED' && data.messaging_limit_tier !== 'TIER_0' 
+      recommendation: data.account_review_status === 'APPROVED' 
         ? '✅ WABA está aprovada e pode enviar mensagens!' 
         : '⚠️ WABA pode ter restrições. Verifique o status acima.'
     });
